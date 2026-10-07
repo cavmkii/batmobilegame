@@ -82,6 +82,10 @@ fertilizer.)
   while a 14-card drafted deck built more roosts at lower levels. Card removal at the
   shop is now a way to build tall.
 
+**Wrecked roosts.** A roost at 0 HP is wrecked for the rest of the night: no bats,
+and it stops blocking its column. At dawn it's rebuilt at the same level with 50% HP.
+(Rebuilding at full HP would make losing a roost better than nearly losing it.)
+
 **Night (automatic, about 20–40 s).**
 - Bats fly out, chase the nearest enemy, fight, and go home at dawn.
 - Enemies walk straight down their column. They attack bats within reach, then any roost
@@ -91,8 +95,10 @@ fertilizer.)
 - **Leaks.** An enemy that reaches the cave hits once for 4× its attack, then is gone.
 
 **Commander.** The commander sits in the command zone and costs guano to place. It can't
-be stacked, but other roosts' patterns can raise its level. If it's destroyed it returns
-to the command zone and costs +2 more each time.
+be stacked, but other roosts' patterns can raise its level. Like every roost it's
+rebuilt at dawn if wrecked, so v0.2's commander tax is gone. On day 1 the commander
+card pulses until you place it: in playtests, a player who skips it is the one most
+likely to lose the first level.
 
 **Positioning.**
 - **Terrain.** Each level has 3–4 terrain tiles. A roost on its own clan's terrain gets a
@@ -207,6 +213,11 @@ seeds.
   (elites 5–7/8 against 0/8). So drafting matters.
 - **At roster level 5**, a drafted deck beats the boss 7/8. The first clear comes after
   a few runs of levelling.
+- **First-level losses (human report):** Fledglings respawned too slowly (7 s for a
+  single bat) to hold a column, and the starter deck is mostly Fledglings. A simple
+  player who never placed the commander lost Moth Cloud 6/10 as Flying Fox. Fledglings
+  now respawn every 3 s, and the opening levels' waves grow more slowly. That player
+  now wins both opening levels 10/10 with every starter.
 - **Earlier findings that still apply:** continuous cave damage ended runs on night 1,
   so leaks are a single hit. Spells had to get cheap to be worth holding.
 
