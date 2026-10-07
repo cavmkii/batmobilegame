@@ -16,7 +16,7 @@ import { endRun } from './runScreens';
 
 const hash = (s: string) => [...s].reduce((a, c) => (Math.imul(a, 31) + c.charCodeAt(0)) >>> 0, 7);
 
-type Sel = { kind: 'pool'; i: number } | { kind: 'spell'; i: number } | { kind: 'cmd' } | null;
+type Sel = { kind: 'pool'; i: number } | { kind: 'spell'; i: number } | { kind: 'cmd' } | { kind: 'roost'; idx: number } | null;
 
 function tonightSummary(d: Defense): string {
   const total = new Map<string, number>();
@@ -73,8 +73,17 @@ registerScreen('battle', (app) => {
   const selSource = () => (sel?.kind === 'cmd' ? 'cmd' : sel?.kind === 'pool' ? sel.i : null);
 
   const highlight = (): Highlight => {
-    const slots = new Map<number, 'ok' | 'bonus' | 'stack'>();
+    const slots = new Map<number, 'ok' | 'bonus' | 'stack' | 'from'>();
     const pattern = new Set<number>();
+    if (sel?.kind === 'roost' && d.phase === 'day' && d.slots[sel.idx].roost) {
+      slots.set(sel.idx, 'from');
+      const batId = d.slots[sel.idx].roost!.batId;
+      for (const t of d.mergeTargets(sel.idx)) {
+        slots.set(t.idx, 'stack');
+        for (const p of d.patternTiles(t.idx, batId)) if (p.roost && p.idx !== sel.idx) pattern.add(p.idx);
+      }
+      return { slots, pattern, batId };
+    }
     const batId = selectedBat();
     const src = selSource();
     if (batId && src !== null) {
@@ -94,7 +103,7 @@ registerScreen('battle', (app) => {
     const traits = bp.traits.map(describeTrait).join(', ');
     const stackable = d.slots.some((s) => s.roost && d.canStackOn(s, batId));
     return `${bp.name}: roost ❤${bp.roost.hp}, keeps ${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''} out (❤${bp.stats.hp} ⚔${bp.stats.atk}), +1 every ${bp.roost.respawn}s${traits ? ' · ' + traits : ''}. `
-      + (isCmd ? `Tap an empty tile.${d.commander.casts ? ` Commander tax: +${d.commander.casts * BALANCE.commander.tax} for ${d.commander.casts} earlier placement${d.commander.casts > 1 ? 's' : ''}.` : ' If destroyed it returns here, costing 2 more each time.'}` : stackable ? 'Tap its roost (blue) to level it and its pattern, or an empty tile.' : 'Tap a tile.');
+      + (isCmd ? `Tap an empty tile.${d.commander.casts ? ` Commander tax: +${d.commander.casts * BALANCE.commander.tax} for ${d.commander.casts} earlier placement${d.commander.casts > 1 ? 's' : ''}.` : ' If destroyed it returns here, costing 2 more each time.'}` : stackable ? 'Tap its level-1 roost (blue) to merge into level 2, or an empty tile.' : 'Tap a tile.');
   };
 
   const onPool = (i: number) => {
@@ -132,6 +141,13 @@ registerScreen('battle', (app) => {
     const offY = (rect.height - VIEW_H * scale) / 2;
     const slot = renderer.slotAt((e.clientX - rect.left - offX) / scale, (e.clientY - rect.top - offY) / scale);
     if (slot < 0) return;
+    if (sel?.kind === 'roost' && d.canMerge(sel.idx, slot)) {
+      d.merge(sel.idx, slot);
+      const ro = d.slots[slot].roost!;
+      note = `Merged: ${ro.bp.name} level ${ro.level}${d.isMega(ro) ? ', MEGA BAT!' : '.'}`;
+      sel = null;
+      return;
+    }
     const src = selSource();
     if (src !== null && selectedBat() && d.canPlace(src, slot)) {
       const stacking = !!d.slots[slot].roost;
@@ -142,9 +158,18 @@ registerScreen('battle', (app) => {
       return;
     }
     const s = d.slots[slot];
+    if (s.roost && d.phase === 'day' && !s.roost.isCommander && !(sel?.kind === 'roost' && sel.idx === slot)) {
+      // Pick this roost up to merge it into a matching one.
+      const ro = s.roost;
+      const targets = d.mergeTargets(slot).length;
+      sel = { kind: 'roost', idx: slot };
+      note = `${ro.bp.name} roost, level ${ro.level} (${d.batsPerRoost(ro)} bats). `
+        + (targets ? `Tap a blue level-${ro.level} ${ro.bp.name} roost to merge them into level ${ro.level + 1}.` : `Merging needs another level-${ro.level} ${ro.bp.name} roost.`);
+      return;
+    }
     if (s.roost) {
       const ro = s.roost;
-      note = ro.ruined ? `${ro.bp.name} roost is wrecked. It will be rebuilt at dawn (level ${ro.level}, half HP).` : `${ro.bp.name} roost, level ${ro.level}${d.isMega(ro) ? ' (mega)' : ''}: ❤${Math.round(ro.hp)}/${ro.maxHp}, ${d.isMega(ro) ? 'one giant bat' : `${ro.bp.roost.count} bats`}, +1 every ${d.respawnTime(ro)}s.`;
+      note = ro.ruined ? `${ro.bp.name} roost is wrecked. It will be rebuilt at dawn (level ${ro.level}, half HP).` : `${ro.bp.name} roost, level ${ro.level}${d.isMega(ro) ? ' (mega)' : ''}: ❤${Math.round(ro.hp)}/${ro.maxHp}, ${d.isMega(ro) ? 'one giant bat' : `${d.batsPerRoost(ro)} bats`}, +1 every ${d.respawnTime(ro)}s.`;
     } else if (s.terrain) {
       const t = TERRAIN[s.terrain];
       note = `${t.icon} ${t.name}: ${t.desc} ${t.basis}`;
@@ -186,7 +211,7 @@ registerScreen('battle', (app) => {
     speedBtn.style.display = isDay ? 'none' : '';
     const k = [d.phase, d.day, d.guano, JSON.stringify(sel), d.commander.inPlay, d.commander.casts,
       d.pool.map((c) => c?.uid ?? '-').join(','), d.spells.map((c) => c.uid).join(','), note,
-      d.slots.map((s) => s.roost?.level ?? 0).join('.')].join('|');
+      d.slots.map((s) => (s.roost ? `${s.roost.batId}${s.roost.level}` : 0)).join('.')].join('|');
     if (k === key) return;
     key = k;
     guano.replaceChildren(h('span.g-icon', '◆'), h('b', String(d.guano)), h('span.small.muted', ' guano'));
@@ -222,7 +247,7 @@ registerScreen('battle', (app) => {
         if (c) text = c.kind === 'bat'
           ? describeBat(c.id, c.upgraded, false)
           : `${SPELL_BY_ID[c.id].name}: ${SPELL_BY_ID[c.id].desc} Tap again to take it (free); casting costs ${d.cardCost(c)} guano.`;
-      } else {
+      } else if (sel.kind === 'spell') {
         const c = d.spells[sel.i];
         if (c) text = `${SPELL_BY_ID[c.id].name}: ${SPELL_BY_ID[c.id].desc} ${d.canCast(sel.i) ? 'Tap again to cast.' : d.phase === 'day' ? 'Cast it at night.' : 'Not enough guano.'}`;
       }
@@ -230,7 +255,7 @@ registerScreen('battle', (app) => {
     if (!text) {
       text = isDay
         ? d.day === 1
-          ? `Tonight's enemies are shown at the top. Start with your commander (gold card), placed in a column they'll come down. Then place pool bats, or stack a copy onto its roost to level it. ↻ rerolls the pool for ${d.refreshCost} guano; dawn refills empty slots.`
+          ? `Tonight's enemies are shown at the top. Start with your commander (gold card), placed in a column they'll come down. Two roosts of the same bat and level merge into one a level higher: tap one, then the other. ↻ rerolls the pool for ${d.refreshCost} guano.`
           : `Dawn: +${d.lastIncome} guano. Tonight: ${tonightSummary(d)}.`
         : 'Bats fly out on their own. Spells are instants: tap one twice to cast.';
     }
@@ -257,6 +282,7 @@ registerScreen('battle', (app) => {
     }
     if (sel?.kind === 'pool' && !d.pool[sel.i]) sel = null;
     if (sel?.kind === 'spell' && !d.spells[sel.i]) sel = null;
+    if (sel?.kind === 'roost' && (d.phase !== 'day' || !d.slots[sel.idx].roost)) sel = null;
     renderer.draw(highlight());
     updateUi();
     if ((d.phase === 'won' || d.phase === 'lost') && !finished) {
