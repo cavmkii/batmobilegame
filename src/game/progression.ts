@@ -37,7 +37,7 @@ export interface UnitBlueprint {
   cost: number;
   stats: Stats;
   traits: Trait[];
-  roost: { hp: number; nights: number; count: number; respawn: number };
+  roost: { hp: number; count: number; respawn: number };
 }
 
 /**
@@ -88,7 +88,6 @@ export function blueprint(batId: string, owned: OwnedBat | undefined, upgradedCa
     traits: traits.filter((t) => t.kind !== 'swarm'),
     roost: {
       hp: Math.round(def.roost.hp * hpMult),
-      nights: def.roost.nights,
       count: swarm && swarm.kind === 'swarm' ? swarm.count : def.roost.count,
       respawn: def.roost.respawn,
     },

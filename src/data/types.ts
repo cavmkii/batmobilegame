@@ -75,8 +75,13 @@ export interface BatDef {
   /** Per-bat combat stats. Range/speed are in old lane units (100 = 1 tile). */
   stats: Stats;
   /** The roost this card places: its HP, how many nights it lasts, bats released per night. */
-  /** respawn: seconds for the roost to replace one fallen bat during the night. */
-  roost: { hp: number; nights: number; count: number; respawn: number };
+  /** Roost HP, bats kept out at once, and seconds to replace one fallen bat at night. */
+  roost: { hp: number; count: number; respawn: number };
+  /**
+   * Tiles (dCol, dRow) that also gain +1 level when this roost is upgraded by stacking.
+   * dRow -1 is toward the enemies.
+   */
+  pattern: [number, number][];
   traits: Trait[];
   evolved: { name: string; trait?: Trait };
   talents: [Talent, Talent];
@@ -126,15 +131,15 @@ export interface RelicDef {
 }
 
 export type RelicEffect =
-  | { kind: 'energyPerDay'; amount: number }
-  | { kind: 'drawPerDay'; amount: number }
-  | { kind: 'firstDayEnergy'; amount: number }
+  | { kind: 'guanoPerDawn'; amount: number }
+  | { kind: 'refreshDiscount'; amount: number }
+  | { kind: 'startGuano'; amount: number }
   | { kind: 'speedPct'; pct: number }
   | { kind: 'hpPct'; pct: number }
   | { kind: 'atkPct'; pct: number }
   | { kind: 'commanderTax'; delta: number }
   | { kind: 'healAfterBattle'; amount: number }
-  | { kind: 'roostNights'; amount: number };
+  | { kind: 'startLevel'; amount: number };
 
 export type TerrainId = 'pond' | 'fig' | 'cactus' | 'lamp' | 'pen';
 

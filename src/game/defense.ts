@@ -10,6 +10,8 @@ import { Rng } from './rng';
 
 const F = BALANCE.field;
 const U = BALANCE.units;
+const E = BALANCE.economy;
+const L = BALANCE.roostLevel;
 
 export interface DefenseConfig {
   encounterId: string;
@@ -25,12 +27,12 @@ export interface DefenseConfig {
 
 export interface Roost {
   batId: string;
-  /** The deck card it came from; null for the commander (lives in the command zone). */
-  card: Card | null;
+  isCommander: boolean;
   bp: UnitBlueprint;
+  /** 1..10. Raised by stacking the same bat, or by a neighbour's pattern. 10 = one mega bat. */
+  level: number;
   hp: number;
   maxHp: number;
-  nightsLeft: number;
   /** Seconds accumulated toward replacing a fallen bat (night only). */
   respawnTimer: number;
 }
@@ -51,7 +53,7 @@ export interface NightGroup {
   col: number;
 }
 
-/** Per-bat bonuses from terrain, adjacency and relics, fixed when the bat leaves its roost. */
+/** Per-bat bonuses from terrain and relics, fixed when the bat leaves its roost. */
 interface Mods {
   atkPct: number;
   hastePct: number;
@@ -80,6 +82,8 @@ export interface Unit {
   /** Home slot for bats (null for summoned bats). */
   home: number | null;
   commander: boolean;
+  /** A level-10 roost's single giant bat. */
+  mega: boolean;
   dead: boolean;
   /** Last attack target position, for the renderer. */
   aimX: number;
@@ -87,9 +91,12 @@ export interface Unit {
 }
 
 export interface FloatText { x: number; y: number; text: string; color: string; t: number }
-export interface Effect { kind: 'blast' | 'stun' | 'heal' | 'buff' | 'slow' | 'death' | 'place'; x: number; y: number; r: number; t: number }
+export interface Effect { kind: 'blast' | 'stun' | 'heal' | 'buff' | 'slow' | 'death' | 'place' | 'level'; x: number; y: number; r: number; t: number }
 
 export type Phase = 'day' | 'night' | 'won' | 'lost';
+
+/** Where a pool card comes from: a pool slot index or the command zone. */
+export type Source = number | 'cmd';
 
 const NO_MODS: Mods = { atkPct: 0, hastePct: 0, lifesteal: 0, auraMult: 1 };
 
@@ -100,9 +107,11 @@ export class Defense {
   /** 1-based day/night counter; night N follows day N. */
   day = 1;
   readonly nights: number;
-  energy = 0;
-  energyCap = 0;
-  hand: Card[] = [];
+  guano: number;
+  /** The visible offers (null = used, waiting for a refresh or dawn). */
+  pool: (Card | null)[];
+  /** Spells taken from the pool, castable as instants. */
+  spells: Card[] = [];
   drawPile: Card[];
   discard: Card[] = [];
   slots: Slot[] = [];
@@ -112,6 +121,10 @@ export class Defense {
   effects: Effect[] = [];
   cave: { hp: number; max: number };
   commander: { bp: UnitBlueprint; deaths: number; inPlay: boolean; taxStep: number };
+  /** Enemies killed this night (feeds the dawn guano bonus). */
+  kills = 0;
+  /** Guano earned at the last dawn, for the UI. */
+  lastIncome = 0;
   /** Seconds into the current night (or total, for animation). */
   time = 0;
   clock = 0;
@@ -120,7 +133,7 @@ export class Defense {
   private nextId = 1;
   private spawnQueue: { at: number; enemy: string; x: number }[] = [];
   private enemyMult: number;
-  private relic = { energyPerDay: 0, drawPerDay: 0, firstDayEnergy: 0, speedPct: 0, hpPct: 0, atkPct: 0, roostNights: 0 };
+  private relic = { guanoPerDawn: 0, refreshDiscount: 0, startGuano: 0, speedPct: 0, hpPct: 0, atkPct: 0, startLevel: 0 };
 
   constructor(private cfg: DefenseConfig) {
     const enc = ENCOUNTERS.find((e) => e.id === cfg.encounterId);
@@ -136,13 +149,8 @@ export class Defense {
       const e = RELIC_BY_ID[id]?.effect;
       if (!e) continue;
       if (e.kind === 'commanderTax') taxStep += e.delta;
-      else if (e.kind === 'energyPerDay') this.relic.energyPerDay += e.amount;
-      else if (e.kind === 'drawPerDay') this.relic.drawPerDay += e.amount;
-      else if (e.kind === 'firstDayEnergy') this.relic.firstDayEnergy += e.amount;
-      else if (e.kind === 'speedPct') this.relic.speedPct += e.pct;
-      else if (e.kind === 'hpPct') this.relic.hpPct += e.pct;
-      else if (e.kind === 'atkPct') this.relic.atkPct += e.pct;
-      else if (e.kind === 'roostNights') this.relic.roostNights += e.amount;
+      else if (e.kind === 'speedPct' || e.kind === 'hpPct' || e.kind === 'atkPct') this.relic[e.kind] += e.pct;
+      else if (e.kind !== 'healAfterBattle') this.relic[e.kind] += e.amount;
     }
     this.commander = {
       bp: blueprint(cfg.commanderId, cfg.roster[cfg.commanderId]),
@@ -154,14 +162,19 @@ export class Defense {
     this.slots = this.makeSlots();
     this.plans = Array.from({ length: this.nights }, (_, i) => this.planNight(i + 1));
     this.drawPile = this.rng.shuffle([...cfg.deck]);
-    this.draw(BALANCE.day.openingHand);
-    this.startDay();
+    this.pool = Array.from({ length: E.poolSize }, () => null);
+    this.fillPool();
+    this.guano = E.startGuano + this.relic.startGuano;
   }
 
   // ---------------- Queries ----------------
 
   get tonight(): NightGroup[] {
     return this.plans[this.day - 1] ?? [];
+  }
+
+  get refreshCost(): number {
+    return Math.max(0, E.refreshCost - this.relic.refreshDiscount);
   }
 
   cardCost(card: Card): number {
@@ -172,28 +185,37 @@ export class Defense {
     return this.commander.bp.cost + this.commander.deaths * this.commander.taxStep;
   }
 
-  canPlace(src: number | 'cmd', slotIdx: number): boolean {
+  /** Can the card at `src` go on this tile: an empty tile, or a same-type roost below max level. */
+  canPlace(src: Source, slotIdx: number): boolean {
     if (this.phase !== 'day') return false;
     const slot = this.slots[slotIdx];
-    if (!slot || slot.roost) return false;
-    if (src === 'cmd') return !this.commander.inPlay && this.energy >= this.commanderCost();
-    const c = this.hand[src];
-    return !!c && c.kind === 'bat' && this.energy >= this.cardCost(c);
+    if (!slot) return false;
+    if (src === 'cmd') return !slot.roost && !this.commander.inPlay && this.guano >= this.commanderCost();
+    const c = this.pool[src];
+    if (!c || c.kind !== 'bat' || this.guano < this.cardCost(c)) return false;
+    return !slot.roost || this.canStackOn(slot, c.id);
+  }
+
+  canStackOn(slot: Slot, batId: string): boolean {
+    const r = slot.roost;
+    return !!r && !r.isCommander && r.batId === batId && r.level < L.max;
+  }
+
+  canTakeSpell(i: number): boolean {
+    const c = this.pool[i];
+    return this.phase === 'day' && !!c && c.kind === 'spell' && this.spells.length < E.spellHandMax;
+  }
+
+  canRefresh(): boolean {
+    return this.phase === 'day' && this.guano >= this.refreshCost && this.drawPile.length + this.discard.length + this.pool.filter(Boolean).length > 0;
   }
 
   /** Spells are instants: castable by day or night, but most only do something at night. */
   canCast(i: number): boolean {
-    const c = this.hand[i];
-    if (!c || c.kind !== 'spell' || this.energy < this.cardCost(c)) return false;
+    const c = this.spells[i];
+    if (!c || this.guano < this.cardCost(c)) return false;
     if (this.phase === 'night') return true;
     return this.phase === 'day' && SPELL_BY_ID[c.id].effect.kind === 'healAll';
-  }
-
-  /** Clans adjacent (orthogonally) to a slot that share a clan with `batId`. */
-  neighbourMatches(slotIdx: number, batId: string): number {
-    const s = this.slots[slotIdx];
-    const clans = BAT_BY_ID[batId].clans;
-    return this.neighbours(s).filter((n) => n.roost && BAT_BY_ID[n.roost.batId].clans.some((c) => clans.includes(c))).length;
   }
 
   terrainMatches(slotIdx: number, batId: string): boolean {
@@ -201,41 +223,66 @@ export class Defense {
     return !!t && BAT_BY_ID[batId].clans.includes(TERRAIN[t].clan);
   }
 
+  /** Tiles a roost's pattern reaches from `slotIdx` (whether or not they hold a roost). */
+  patternTiles(slotIdx: number, batId: string): Slot[] {
+    const s = this.slots[slotIdx];
+    return BAT_BY_ID[batId].pattern
+      .map(([dc, dr]) => this.slots.find((o) => o.col === s.col + dc && o.row === s.row + dr))
+      .filter((o): o is Slot => !!o);
+  }
+
+  isMega(r: Roost): boolean {
+    return r.level >= L.max;
+  }
+
   // ---------------- Day actions ----------------
 
-  place(src: number | 'cmd', slotIdx: number): boolean {
+  place(src: Source, slotIdx: number): boolean {
     if (!this.canPlace(src, slotIdx)) return false;
     const slot = this.slots[slotIdx];
-    let bp: UnitBlueprint;
-    let card: Card | null = null;
     if (src === 'cmd') {
-      this.energy -= this.commanderCost();
-      bp = this.commander.bp;
+      this.guano -= this.commanderCost();
       this.commander.inPlay = true;
-    } else {
-      card = this.hand.splice(src, 1)[0];
-      this.energy -= this.cardCost(card);
-      bp = this.batBlueprint(card);
+      this.newRoost(slot, this.commander.bp, true);
+      return true;
     }
-    let maxHp = bp.roost.hp * (1 + this.relic.hpPct / 100);
-    if (slot.terrain === 'fig' && this.terrainMatches(slotIdx, bp.batId)) maxHp *= 1.5;
-    slot.roost = {
-      batId: bp.batId,
-      card,
-      bp,
-      hp: Math.round(maxHp),
-      maxHp: Math.round(maxHp),
-      nightsLeft: bp.roost.nights + (card ? this.relic.roostNights : 0),
-      respawnTimer: 0,
-    };
-    this.effects.push({ kind: 'place', x: slot.x, y: slot.y, r: 0.6, t: this.clock });
+    const card = this.pool[src]!;
+    this.pool[src] = null;
+    this.guano -= this.cardCost(card);
+    // Placed cards cycle back through the deck, so the same bat can be drawn again and stacked.
+    this.discard.push(card);
+    if (slot.roost) {
+      this.levelUp(slot, 1);
+      for (const t of this.patternTiles(slot.idx, card.id)) if (t.roost) this.levelUp(t, 1);
+    } else {
+      this.newRoost(slot, this.batBlueprint(card), false);
+    }
+    return true;
+  }
+
+  takeSpell(i: number): boolean {
+    if (!this.canTakeSpell(i)) return false;
+    this.spells.push(this.pool[i]!);
+    this.pool[i] = null;
+    return true;
+  }
+
+  /** Discard what's showing and draw a fresh pool. */
+  refresh(): boolean {
+    if (!this.canRefresh()) return false;
+    this.guano -= this.refreshCost;
+    for (let i = 0; i < this.pool.length; i++) {
+      if (this.pool[i]) this.discard.push(this.pool[i]!);
+      this.pool[i] = null;
+    }
+    this.fillPool();
     return true;
   }
 
   cast(i: number): boolean {
     if (!this.canCast(i)) return false;
-    const card = this.hand.splice(i, 1)[0];
-    this.energy -= this.cardCost(card);
+    const card = this.spells.splice(i, 1)[0];
+    this.guano -= this.cardCost(card);
     this.castSpell(SPELL_BY_ID[card.id].effect, card.upgraded);
     this.discard.push(card);
     return true;
@@ -245,14 +292,14 @@ export class Defense {
     if (this.phase !== 'day') return;
     this.phase = 'night';
     this.time = 0;
+    this.kills = 0;
     this.buffs = { atkPct: 0, lifesteal: 0, atkUntil: 0, hastePct: 0, hasteUntil: 0, slowPct: 0, slowUntil: 0 };
     for (const slot of this.slots) {
-      if (!slot.roost) continue;
-      slot.roost.respawnTimer = 0;
-      const mods = this.modsFor(slot);
-      for (let k = 0; k < slot.roost.bp.roost.count; k++) {
-        this.spawnBat(slot.roost.bp, slot.x + (k - (slot.roost.bp.roost.count - 1) / 2) * 0.18, slot.y - 0.3, slot.idx, mods);
-      }
+      const r = slot.roost;
+      if (!r) continue;
+      r.respawnTimer = 0;
+      const n = this.batsPerRoost(r);
+      for (let k = 0; k < n; k++) this.spawnBat(slot, slot.x + (k - (n - 1) / 2) * 0.18, slot.y - 0.3);
     }
     let t = 0.5;
     this.spawnQueue = [];
@@ -363,29 +410,72 @@ export class Defense {
     return groups;
   }
 
-  /** Each roost tops its bats back up to its count, one at a time, on its own cooldown. */
+  private newRoost(slot: Slot, bp: UnitBlueprint, isCommander: boolean) {
+    slot.roost = { batId: bp.batId, isCommander, bp, level: 1, hp: 0, maxHp: 0, respawnTimer: 0 };
+    slot.roost.maxHp = this.roostMaxHp(slot);
+    slot.roost.hp = slot.roost.maxHp;
+    if (this.relic.startLevel) this.levelUp(slot, this.relic.startLevel, false);
+    this.effects.push({ kind: 'place', x: slot.x, y: slot.y, r: 0.6, t: this.clock });
+  }
+
+  private roostMaxHp(slot: Slot): number {
+    const r = slot.roost!;
+    let hp = r.bp.roost.hp * (1 + (L.hpPct * (r.level - 1)) / 100) * (1 + this.relic.hpPct / 100);
+    if (slot.terrain === 'fig' && this.terrainMatches(slot.idx, r.batId)) hp *= 1.5;
+    return Math.round(hp);
+  }
+
+  /** Raise a roost's level; the extra max HP is added to its current HP. */
+  private levelUp(slot: Slot, by: number, fx = true) {
+    const r = slot.roost!;
+    const before = r.level;
+    r.level = Math.min(L.max, r.level + by);
+    if (r.level === before) return;
+    const oldMax = r.maxHp;
+    r.maxHp = this.roostMaxHp(slot);
+    r.hp += r.maxHp - oldMax;
+    if (fx) {
+      this.effects.push({ kind: 'level', x: slot.x, y: slot.y, r: 0.5, t: this.clock });
+      this.floats.push({ x: slot.x, y: slot.y, text: r.level >= L.max ? 'MEGA!' : `Lv${r.level}`, color: '#ffe14a', t: this.clock });
+    }
+  }
+
+  private batsPerRoost(r: Roost): number {
+    return this.isMega(r) ? 1 : r.bp.roost.count;
+  }
+
+  /** Each roost tops its bats back up, one at a time, on its own cooldown (mega bats: only after death). */
   private respawnBats(dt: number) {
     for (const slot of this.slots) {
       const r = slot.roost;
       if (!r) continue;
       const out = this.units.filter((u) => u.side === 'bat' && !u.dead && u.home === slot.idx).length;
-      if (out >= r.bp.roost.count) {
+      if (out >= this.batsPerRoost(r)) {
         r.respawnTimer = 0;
         continue;
       }
       r.respawnTimer += dt;
-      if (r.respawnTimer >= r.bp.roost.respawn) {
+      if (r.respawnTimer >= this.respawnTime(r)) {
         r.respawnTimer = 0;
-        this.spawnBat(r.bp, slot.x, slot.y - 0.3, slot.idx, this.modsFor(slot));
+        this.spawnBat(slot, slot.x, slot.y - 0.3);
       }
     }
   }
 
-  private startDay() {
-    const d = BALANCE.day;
-    this.energyCap = Math.min(d.energyCap, d.startEnergy + d.energyPerDay * (this.day - 1)) + this.relic.energyPerDay;
-    this.energy = this.energyCap + (this.day === 1 ? this.relic.firstDayEnergy : 0);
-    this.phase = 'day';
+  respawnTime(r: Roost): number {
+    return r.bp.roost.respawn * (this.isMega(r) ? L.megaRespawnMult : 1);
+  }
+
+  private fillPool() {
+    for (let i = 0; i < this.pool.length; i++) {
+      if (this.pool[i]) continue;
+      if (!this.drawPile.length) {
+        if (!this.discard.length) return;
+        this.drawPile = this.rng.shuffle(this.discard);
+        this.discard = [];
+      }
+      this.pool[i] = this.drawPile.shift()!;
+    }
   }
 
   private dawn() {
@@ -394,46 +484,29 @@ export class Defense {
     this.spawnQueue = [];
     for (const slot of this.slots) {
       const r = slot.roost;
-      if (!r) continue;
-      if (BAT_BY_ID[r.batId].clans.includes('SAN')) {
-        // Vampire bats regurgitate blood for hungry roost-mates.
-        for (const n of this.neighbours(slot)) {
-          if (n.roost) n.roost.hp = Math.min(n.roost.maxHp, n.roost.hp + (n.roost.maxHp * BALANCE.adjacency.vampireDawnHealPct) / 100);
-        }
-      }
-      if (r.card) {
-        r.nightsLeft--;
-        if (r.nightsLeft <= 0) this.removeRoost(slot);
+      if (!r || !BAT_BY_ID[r.batId].clans.includes('SAN')) continue;
+      // Vampire bats regurgitate blood for hungry roost-mates.
+      for (const n of this.neighbours(slot)) {
+        if (n.roost) n.roost.hp = Math.min(n.roost.maxHp, n.roost.hp + (n.roost.maxHp * BALANCE.adjacency.vampireDawnHealPct) / 100);
       }
     }
     if (this.day >= this.nights) {
       this.phase = 'won';
       return;
     }
+    this.lastIncome = E.perDawn + Math.floor(this.kills / E.killsPerGuano) + this.relic.guanoPerDawn;
+    this.guano += this.lastIncome;
     this.day++;
-    this.draw(BALANCE.day.drawPerDay + this.relic.drawPerDay);
-    this.startDay();
+    this.fillPool();
+    this.phase = 'day';
   }
 
   private removeRoost(slot: Slot) {
     const r = slot.roost!;
     slot.roost = null;
-    if (r.card) this.discard.push(r.card);
-    else {
+    if (r.isCommander) {
       this.commander.inPlay = false;
       this.commander.deaths++;
-    }
-  }
-
-  private draw(n: number) {
-    for (let i = 0; i < n; i++) {
-      if (this.hand.length >= BALANCE.day.maxHand) return;
-      if (!this.drawPile.length) {
-        if (!this.discard.length) return;
-        this.drawPile = this.rng.shuffle(this.discard);
-        this.discard = [];
-      }
-      this.hand.push(this.drawPile.shift()!);
     }
   }
 
@@ -448,8 +521,6 @@ export class Defense {
   private modsFor(slot: Slot): Mods {
     const r = slot.roost!;
     const m: Mods = { atkPct: this.relic.atkPct, hastePct: 0, lifesteal: 0, auraMult: 1 };
-    const adj = BALANCE.adjacency;
-    m.atkPct += Math.min(adj.maxAtkPct, this.neighbourMatches(slot.idx, r.batId) * adj.atkPctPerNeighbour);
     if (this.terrainMatches(slot.idx, r.batId)) {
       if (slot.terrain === 'pond') m.atkPct += 40;
       if (slot.terrain === 'lamp') m.hastePct += 35;
@@ -464,7 +535,7 @@ export class Defense {
     return { ...s, range: Math.max(U.minMelee, s.range / U.rangePerTile), speed };
   }
 
-  private addUnit(p: Pick<Unit, 'side' | 'defId' | 'x' | 'y' | 'stats' | 'traits' | 'mods' | 'home' | 'commander'>): Unit {
+  private addUnit(p: Pick<Unit, 'side' | 'defId' | 'x' | 'y' | 'stats' | 'traits' | 'mods' | 'home' | 'commander' | 'mega'>): Unit {
     const k = p.stats.knockbacks;
     const u: Unit = {
       id: this.nextId++,
@@ -485,14 +556,32 @@ export class Defense {
     return u;
   }
 
-  private spawnBat(bp: UnitBlueprint, x: number, y: number, home: number | null, mods: Mods) {
-    const slot = home !== null ? this.slots[home] : null;
-    let hp = bp.stats.hp * (1 + this.relic.hpPct / 100);
-    if (slot?.terrain === 'fig' && this.terrainMatches(slot.idx, bp.batId)) hp *= 1.3;
+  /** A bat leaves a roost, with stats from the roost's level (or a level-10 mega bat). */
+  private spawnBat(slot: Slot, x: number, y: number) {
+    const r = slot.roost!;
+    const bp = r.bp;
+    const lvl = 1 + (L.statPct * (r.level - 1)) / 100;
+    let hp = bp.stats.hp * lvl * (1 + this.relic.hpPct / 100);
+    let atk = bp.stats.atk * lvl;
+    const mega = this.isMega(r);
+    if (mega) {
+      hp *= bp.roost.count * L.megaHpMult;
+      atk *= bp.roost.count * L.megaAtkMult;
+    }
+    if (slot.terrain === 'fig' && this.terrainMatches(slot.idx, bp.batId)) hp *= 1.3;
     this.addUnit({
-      side: 'bat', defId: bp.batId, x, y, home, mods,
-      commander: !!BAT_BY_ID[bp.batId].commander && home !== null && slot?.roost?.card === null,
-      stats: this.toTiles({ ...bp.stats, hp: Math.round(hp) }, 'bat'),
+      side: 'bat', defId: bp.batId, x, y, home: slot.idx, mods: this.modsFor(slot), mega,
+      commander: r.isCommander,
+      stats: this.toTiles({ ...bp.stats, hp: Math.round(hp), atk: Math.round(atk) }, 'bat'),
+      traits: bp.traits,
+    });
+  }
+
+  /** Summoned by spells: no home roost, level 1. */
+  private spawnLooseBat(bp: UnitBlueprint, x: number, y: number) {
+    this.addUnit({
+      side: 'bat', defId: bp.batId, x, y, home: null, mods: { ...NO_MODS, atkPct: this.relic.atkPct }, mega: false, commander: false,
+      stats: this.toTiles({ ...bp.stats, hp: Math.round(bp.stats.hp * (1 + this.relic.hpPct / 100)) }, 'bat'),
       traits: bp.traits,
     });
   }
@@ -501,7 +590,7 @@ export class Defense {
     const def = ENEMY_BY_ID[id];
     const m = this.enemyMult;
     const s = { ...def.stats, hp: Math.round(def.stats.hp * m), atk: Math.round(def.stats.atk * m) };
-    this.addUnit({ side: 'enemy', defId: id, x, y: -0.3, stats: this.toTiles(s, 'enemy'), traits: def.traits, mods: NO_MODS, home: null, commander: false });
+    this.addUnit({ side: 'enemy', defId: id, x, y: -0.3, stats: this.toTiles(s, 'enemy'), traits: def.traits, mods: NO_MODS, home: null, commander: false, mega: false });
   }
 
   private computeAuras(bats: Unit[]) {
@@ -686,6 +775,7 @@ export class Defense {
 
   private kill(t: Unit) {
     t.dead = true;
+    if (t.side === 'enemy') this.kills++;
     t.hp = 0;
     this.effects.push({ kind: 'death', x: t.x, y: t.y, r: 0.3, t: this.clock });
     const dh = t.traits.find((x) => x.kind === 'deathHeal');
@@ -758,13 +848,13 @@ export class Defense {
       case 'hasteAll':
         this.buffs.hastePct = eff.pct * amt;
         this.buffs.hasteUntil = this.time + eff.seconds * dur;
-        this.energy += eff.energy;
+        this.guano += eff.energy;
         this.effects.push({ kind: 'buff', x: 2.5, y: 6, r: 3, t: c });
         break;
       case 'summon': {
         const bp = blueprint(eff.batId, this.cfg.roster[eff.batId]);
         const n = Math.round(eff.count * amt);
-        for (let k = 0; k < n; k++) this.spawnBat(bp, 1 + (k / Math.max(1, n - 1)) * 3, F.caveY - 0.4, null, { ...NO_MODS, atkPct: this.relic.atkPct });
+        for (let k = 0; k < n; k++) this.spawnLooseBat(bp, 1 + (k / Math.max(1, n - 1)) * 3, F.caveY - 0.4);
         break;
       }
     }

@@ -1,4 +1,4 @@
-# Batmobile — Game Design (v0.2: Roost Defense)
+# Batmobile — Game Design (v0.3: Roost Defense)
 
 A mobile collect-and-upgrade game crossed with a deckbuilder roguelite. You collect
 bats, level them permanently, and take a commander-led deck into runs. Each fight is
@@ -27,50 +27,76 @@ The roster decides *what you can field and how strong it is*. The run decides
 ## 2. A level: day / night defense
 
 Portrait field: enemies come in from the top, and your cave sits along the bottom.
-Above the cave is a 5×3 grid of roost tiles.
+Above the cave is a 5×3 grid of roost tiles. A level is about **building something
+over its length**. Roosts never expire; they grow.
 
-- **Nights.** Each level has 3–5 nights, more for elites and the boss. Survive the
-  last night to win. Cave HP carries over through the run.
-- **Each night's wave is announced during the day:** which enemies, how many, and
-  which columns they come down. The waves come from a threat budget that grows each
-  night. The boss and elite levels add a fixed finale enemy.
+- **Nights.** Normal levels have 7 nights, elites 8, and the boss 10. Survive the last
+  night to win. Cave HP carries over through the run.
+- **Each night's wave is announced during the day:** which enemies, how many, and which
+  column they come down. The waves come from a threat budget that grows each night.
+  Elite and boss levels add a fixed finale enemy.
 
-**Day (planning, no clock).**
-- **Energy** starts at 3 on day 1 and goes up by 1 each day, to a cap of 8. It resets
-  each level, Hearthstone-style, so there are no land cards.
-- **Hand** stays between days, MTG-style. You draw 5 at the start of a level and 2 each
-  day, with a hand limit of 7. When the deck runs out, the discard pile is shuffled in.
-- **Bat cards place roosts.** A roost has HP, lasts a set number of nights (stamina),
-  and keeps a fixed number of bats out. During the night it replaces fallen bats one
-  at a time on a cooldown that depends on the bat type: Little Brown Bats every 3 s,
-  a Hammer-headed Bat every 14 s, commanders every 14–16 s.
-- **Bats can only be placed during the day** (like MTG's sorcery speed).
+**Guano: the one currency inside a level.** (Bat guano really was mined and sold as
+fertilizer.)
+- You start each level with 6. Each dawn adds +5, plus 1 for every 4 kills.
+- It pays for placing bats (the card's cost), refreshing the pool (2), and casting spells.
+- Unspent guano carries over, so every day you choose between building, rerolling and
+  saving.
+
+**The pool: what the deck lets you place.**
+- Only **2 cards** are offered at a time.
+- Using one leaves its slot empty. Nothing replaces it until you pay to **refresh**
+  (discard both and draw 2) or until dawn, which refills empty slots for free.
+- Placed and discarded cards go to the discard pile, which reshuffles into the deck when
+  it runs out. So in a 14-card deck, a given bat comes back about once per cycle.
+- **Spells** appear in the pool too. Taking one is free and puts it in a spell hand
+  (max 3). Casting costs guano. Spells are instants: you can cast them at night, and
+  the heal spell also works during the day.
+
+**Roosts and stacking.**
+- A bat card placed on an empty tile builds a level-1 roost. The roost keeps a fixed
+  number of bats out and replaces fallen ones on a per-species cooldown (3 s for Little
+  Brown Bats, 14–16 s for heavies).
+- Placing the same bat on its own roost **stacks** it: +1 level. Each level gives +15%
+  bat stats and +12% roost HP.
+- **Pattern spread.** Each species has a grid pattern, and stacking it also gives +1
+  level to every roost in that pattern, whatever its type. It doesn't chain. The
+  patterns follow each bat's identity:
+
+  | Bat | Pattern |
+  |---|---|
+  | Egyptian Fruit Bat | tile to the right |
+  | Straw-colored Fruit Bat (colonial migrant) | left and right |
+  | Little Brown Bat | tile ahead |
+  | Brown Long-eared Bat | the 4 diagonals |
+  | Mexican Free-tailed Bat (long-distance flyer) | 2 ahead, 2 behind |
+  | Common Vampire Bat (blood-sharing) | the 4 orthogonal neighbours |
+  | Hammer-headed, Tube-lipped, White-winged | all 8 around |
+  | Fledgling | none |
+
+- **Level 10: mega bat.** The roost releases one giant bat instead of its group. It has
+  3× the group's total HP and 1.5× its total attack, and is only replaced after it dies,
+  on a doubled cooldown.
+- **Tall vs wide.** Small decks see the same card more often and stack higher. In bot
+  runs the 8-card starter reached level 9 or so on its top roost in a 7-night level,
+  while a 14-card drafted deck built more roosts at lower levels. Card removal at the
+  shop is now a way to build tall.
 
 **Night (automatic, about 20–40 s).**
-- Bats fly out, chase the nearest enemy, fight, and return home.
-- Enemies walk straight down their column. They attack bats within reach, then any
-  roost blocking their column, then the cave. Once an enemy is inside the roost zone
-  with nothing left blocking its column, it rushes the cave at 3× speed.
-- **Spells are instants.** Unspent day energy carries into the night, so you choose
-  between spending it on roosts and keeping it for a night-time answer. Only the
-  heal spell does anything during the day.
-- **Leaks.** An enemy that reaches the cave hits once for 4× its attack and then is
-  gone. (An earlier version had enemies keep attacking the cave; one weak first
-  night could then lose the whole run.)
+- Bats fly out, chase the nearest enemy, fight, and go home at dawn.
+- Enemies walk straight down their column. They attack bats within reach, then any roost
+  blocking their column, then the cave.
+- Once an enemy is inside the roost zone with nothing left blocking its column, it rushes
+  the cave at 3× speed.
+- **Leaks.** An enemy that reaches the cave hits once for 4× its attack, then is gone.
 
-**Dawn.**
-- Surviving bats go home and every roost loses one night of stamina.
-- An expired or destroyed roost sends its card to the discard pile.
-
-**Commander.**
-- The commander is a roost card in the command zone: playable any day, and it
-  never expires.
-- If it's destroyed, it goes back to the command zone and costs +2 more each time
-  (commander tax).
+**Commander.** The commander sits in the command zone and costs guano to place. It can't
+be stacked, but other roosts' patterns can raise its level. If it's destroyed it returns
+to the command zone and costs +2 more each time.
 
 **Positioning.**
-- **Terrain tiles.** Each level has 3–4 terrain tiles. A roost on its own clan's
-  terrain gets a bonus, based on where those bats really feed:
+- **Terrain.** Each level has 3–4 terrain tiles. A roost on its own clan's terrain gets a
+  bonus, based on where those bats really feed:
 
   | Terrain | Clan | Bonus | Real basis |
   |---|---|---|---|
@@ -80,10 +106,9 @@ Above the cave is a 5×3 grid of roost tiles.
   | Street lamp | Insectivore | +35% attack speed | Lights concentrate insects |
   | Cattle pen | Sanguivore | +25% lifesteal | Common vampire bats feed mostly on livestock |
 
-- **Colony adjacency.** A roost gets +10% attack for each orthogonal neighbour that
-  shares a clan, up to +30%. Vampire roosts heal neighbouring roosts 20% at dawn.
-- **Column blocking.** Enemies only attack a roost in their own column. Roosts placed
-  in the columns tonight's enemies use act as walls.
+- **Pattern spread** makes where you put a roost relative to the others matter.
+- **Column blocking.** Enemies only attack roosts in their own column.
+- **Vampire roosts** heal orthogonal neighbours 20% at dawn.
 
 **Enemy note.** Tiger moths jam bat sonar with ultrasonic clicks, which is real
 (Arctiinae). In the game they shrink the range of nearby bats.
@@ -157,36 +182,33 @@ everything accrued. Beating the boss grants a large completion bonus.
 
 ## 9. Known tensions / to watch in playtest
 
-1. **Decisions per day.** Ramping energy, a kept hand, and multi-night roosts may
-   add up to too few real choices on some days ("place whatever I drew") or too
-   many. Only human play will show this.
-2. **Hand clogging.** The hand limit is 7 and draws stop at the limit. If spells pile
-   up, you stop drawing roosts. MTG would make you discard down to the limit; that
-   rule isn't in yet.
-3. **Commander strength.** Ghost Bat (fast, area damage, lifesteal) clearly
-   outperforms Flying Fox (a slow tank) in bot runs. The bot can't judge aura or
-   positioning value, so a person needs to check this.
+1. **Level length.** 7–10 nights per level is a 10–15 minute session, long for mobile.
+   That's the price of having time to build. A mid-level save/resume would help.
+2. **Fledgling stacking.** Basics stack too, and a thin deck of Fledglings levels up
+   fast. Their mega bat is weak (a single bat ×3), but watch whether "stack Fledglings"
+   becomes the default line.
+3. **Commander strength.** Ghost Bat (fast, area damage, lifesteal) beats Flying Fox (a
+   slow tank) in bot runs. The bot can't judge aura or pattern value, so a person needs
+   to check this.
 4. **Gacha-only acquisition.** With commander rules, off-identity pulls are worth less.
    Dupe→XP and pity soften this.
 5. **XP and Glowbugs** don't compete with each other. That may be too frictionless.
 
-## 10. Balance status (bot playtests, v0.2)
+## 10. Balance status (bot playtests)
 
-`tests/defense.test.ts` includes a bot that places its commander first, then roosts in
-the columns tonight's enemies will use, preferring terrain and same-clan neighbours.
-It holds energy for a night spell and casts damage spells when enemies get close.
-Each cell is 8 seeds.
+`tests/defense.test.ts` includes a bot that places its commander, stacks any pool bat
+onto its existing roost (or roosts it in a threatened column), takes spells, refreshes
+when it has spare guano, and casts damage spells when enemies get close. Each cell is 8
+seeds.
 
-- **Starter decks at roster level 1** win row 0–2 levels with little cave damage. The
-  elite Owl Loft is a coin flip. The boss is 0/8.
-- **Drafted deck (starter + 6 drafts)** at level 5 wins almost everything, and the boss
-  6/8. So the first clear comes after a few runs of levelling.
-- **Findings that changed the numbers:**
-  - Continuous cave damage ended runs on night 1, so leaks became a single hit.
-  - Fledglings at 2 bats for 1 energy were the best value per energy in the game,
-    so drafting made decks worse. Now they release 1 bat.
-  - 2-energy spells lost to 2-energy roosts that last 3–4 nights, so holding energy
-    for spells was a losing play. Most spells now cost 1, with stronger effects.
+- **Starter decks at roster level 1** win the row 0–2 levels. Hawk Ridge and the elites
+  are a test, and the boss is 0–1/8.
+- **Drafted Fox deck at level 1** clearly beats the Fox starter in the harder levels
+  (elites 5–7/8 against 0/8). So drafting matters.
+- **At roster level 5**, a drafted deck beats the boss 7/8. The first clear comes after
+  a few runs of levelling.
+- **Earlier findings that still apply:** continuous cave damage ended runs on night 1,
+  so leaks are a single hit. Spells had to get cheap to be worth holding.
 
 ## 11. Tech
 

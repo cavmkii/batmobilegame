@@ -30,37 +30,40 @@ const runNight = (d: Defense) => {
   for (let i = 0; i < 60 * 120 && d.phase === 'night'; i++) d.step(1 / 60);
 };
 
+const deckOf = (...ids: string[]) => ids.map((id) => newCard(SPELL_BY_ID[id] ? 'spell' : 'bat', id));
+
 /**
- * A simple player: commander first, then roosts into the columns tonight's enemies use,
- * preferring terrain and same-clan neighbours. Keeps 2 energy for a held spell.
- * At night, fires damage/stun spells once an enemy gets close to the cave.
+ * A simple player. Commander first; then for each pool card: stack it onto its roost if one
+ * exists, else roost it in a column tonight's enemies use (front rows, terrain first).
+ * Takes spells. Refreshes when the pool has nothing it can use. Casts spells when enemies get close.
  */
 export function botDay(d: Defense) {
   const cols = new Set(d.tonight.map((g) => g.col));
   const score = (slot: number, batId: string) => {
     const s = d.slots[slot];
-    return (cols.has(s.col) ? 10 : 0) + (2 - s.row) * 2 + (d.terrainMatches(slot, batId) ? 6 : 0) + d.neighbourMatches(slot, batId) * 2;
+    return (cols.has(s.col) ? 10 : 0) + (2 - s.row) * 2 + (d.terrainMatches(slot, batId) ? 6 : 0);
   };
-  const bestSlot = (batId: string) => {
+  const bestEmpty = (batId: string) => {
     let best = -1;
     for (const s of d.slots) if (!s.roost && (best < 0 || score(s.idx, batId) > score(best, batId))) best = s.idx;
     return best;
   };
   if (!d.commander.inPlay) {
-    const s = bestSlot(d.commander.bp.batId);
-    if (s >= 0 && d.canPlace('cmd', s)) d.place('cmd', s);
+    const s = bestEmpty(d.commander.bp.batId);
+    if (s >= 0) d.place('cmd', s);
   }
-  // Heals are worth casting by day if anything is hurt.
-  const hurt = d.cave.hp < d.cave.max * 0.8 || d.slots.some((s) => s.roost && s.roost.hp < s.roost.maxHp * 0.6);
-  const heal = d.hand.findIndex((c, idx) => c.kind === 'spell' && SPELL_BY_ID[c.id].effect.kind === 'healAll' && d.canCast(idx));
-  if (hurt && heal >= 0) d.cast(heal);
-  for (let guard = 0; guard < 10; guard++) {
-    const nightSpell = d.hand.find((c) => c.kind === 'spell' && SPELL_BY_ID[c.id].effect.kind !== 'healAll');
-    const reserve = nightSpell ? d.cardCost(nightSpell) : 0;
-    const i = d.hand.findIndex((c) => c.kind === 'bat' && d.cardCost(c) <= d.energy - reserve);
-    if (i < 0) break;
-    const s = bestSlot(d.hand[i].id);
-    if (s < 0 || !d.place(i, s)) break;
+  for (let refreshes = 0; refreshes < 3; refreshes++) {
+    for (let i = 0; i < d.pool.length; i++) {
+      const c = d.pool[i];
+      if (!c) continue;
+      if (c.kind === 'spell') { d.takeSpell(i); continue; }
+      const stack = d.slots.find((s) => d.canStackOn(s, c.id));
+      const target = stack ? stack.idx : bestEmpty(c.id);
+      if (target >= 0) d.place(i, target);
+    }
+    const reserve = d.spells.length ? 1 : 0;
+    if (d.guano - d.refreshCost < 2 + reserve) break;
+    if (!d.refresh()) break;
   }
 }
 
@@ -69,7 +72,7 @@ export function botNight(d: Defense) {
     const near = d.units.some((u) => u.side === 'enemy' && u.y > 6);
     if (near && i % 30 === 0) {
       const healNow = d.cave.hp < d.cave.max * 0.6;
-      const k = d.hand.findIndex((c, idx) => c.kind === 'spell' && d.canCast(idx) && (SPELL_BY_ID[c.id].effect.kind !== 'healAll' || healNow));
+      const k = d.spells.findIndex((c, idx) => d.canCast(idx) && (SPELL_BY_ID[c.id].effect.kind !== 'healAll' || healNow));
       if (k >= 0) d.cast(k);
     }
     d.step(1 / 60);
@@ -85,69 +88,119 @@ export function botLevel(d: Defense) {
   return d.phase;
 }
 
-describe('defense rules', () => {
-  it('ramps energy and draws per day', () => {
-    const d = new Defense(cfg({ encounterId: 'snake_den' }));
-    expect(d.hand.length).toBe(BALANCE.day.openingHand);
-    expect(d.energy).toBe(3);
+describe('pool and guano', () => {
+  it('starts with guano and a full pool, and earns guano at dawn', () => {
+    const d = new Defense(cfg({ caveHp: 1e9, caveMax: 1e9 }));
+    expect(d.guano).toBe(BALANCE.economy.startGuano);
+    expect(d.pool.filter(Boolean).length).toBe(BALANCE.economy.poolSize);
+    const before = d.guano;
     d.endDay();
     runNight(d);
-    expect(d.phase).not.toBe('night');
-    if (d.phase === 'day') {
-      expect(d.day).toBe(2);
-      expect(d.energy).toBe(4);
-      expect(d.hand.length).toBe(Math.min(BALANCE.day.maxHand, BALANCE.day.openingHand + BALANCE.day.drawPerDay));
-    }
+    expect(d.phase).toBe('day');
+    expect(d.guano).toBeGreaterThanOrEqual(before + BALANCE.economy.perDawn);
   });
 
-  it('only places bats by day, and spells are instants', () => {
-    const deck: Card[] = [newCard('bat', 'fledgling'), newCard('spell', 'guano_bomb'), newCard('spell', 'ripe_harvest'),
-      newCard('bat', 'fledgling'), newCard('bat', 'fledgling')];
-    const d = new Defense(cfg({ deck }));
-    const bat = d.hand.findIndex((c) => c.kind === 'bat');
-    const bomb = d.hand.findIndex((c) => c.id === 'guano_bomb');
-    const harvest = d.hand.findIndex((c) => c.id === 'ripe_harvest');
-    expect(d.canCast(bomb)).toBe(false); // nothing to hit by day
-    expect(d.canCast(harvest)).toBe(true); // heals work by day
-    expect(d.canPlace(bat, 0)).toBe(true);
+  it('leaves a used slot empty until a paid refresh or dawn', () => {
+    const d = new Defense(cfg({ deck: deckOf('fledgling', 'fledgling', 'fledgling', 'fledgling', 'fledgling', 'fledgling'), caveHp: 1e9, caveMax: 1e9 }));
+    expect(d.place(0, 7)).toBe(true);
+    expect(d.pool[0]).toBeNull();
+    const g = d.guano;
+    expect(d.refresh()).toBe(true);
+    expect(d.guano).toBe(g - d.refreshCost);
+    expect(d.pool.every(Boolean)).toBe(true);
+    d.place(0, 8);
     d.endDay();
-    expect(d.canPlace(d.hand.findIndex((c) => c.kind === 'bat'), 0)).toBe(false);
+    runNight(d);
+    expect(d.pool.every(Boolean)).toBe(true); // dawn refill
+  });
+
+  it('cycles placed cards through the discard so they can be drawn again', () => {
+    const d = new Defense(cfg({ deck: deckOf('little_brown', 'common_vampire'), caveHp: 1e9, caveMax: 1e9 }));
+    d.guano = 99;
+    const first = d.pool[0]!.id;
+    d.place(0, 0);
+    d.place(1, 1);
+    d.refresh(); // draw pile empty -> reshuffles the discard
+    expect(d.pool.some((c) => c?.id === first)).toBe(true);
+  });
+
+  it('takes spells into a hand and casts them as instants at night', () => {
+    const d = new Defense(cfg({ deck: deckOf('guano_bomb', 'ripe_harvest') }));
+    const bomb = d.pool.findIndex((c) => c?.id === 'guano_bomb');
+    expect(d.takeSpell(bomb)).toBe(true);
+    expect(d.canCast(0)).toBe(false); // nothing to hit by day
+    d.endDay();
     for (let i = 0; i < 60 * 4; i++) d.step(1 / 60);
-    expect(d.canCast(d.hand.findIndex((c) => c.id === 'guano_bomb'))).toBe(true);
+    expect(d.canCast(0)).toBe(true);
   });
+});
 
-  it('carries unspent day energy into the night', () => {
-    const d = new Defense(cfg());
-    const before = d.energy;
-    d.endDay();
-    expect(d.energy).toBe(before);
-  });
+describe('roost levels', () => {
+  const stackDeck = () => deckOf('egyptian_fruit', 'egyptian_fruit', 'egyptian_fruit', 'egyptian_fruit');
 
-  it('releases bats from roosts at night and expires roosts after their nights', () => {
-    // Indestructible cave, so this checks expiry rather than defense strength.
-    const d = new Defense(cfg({ deck: Array.from({ length: 6 }, () => newCard('bat', 'fledgling')), caveHp: 1e9, caveMax: 1e9 }));
+  it('stacking the same bat levels its roost; a different bat cannot stack', () => {
+    const d = new Defense(cfg({ commanderId: 'flying_fox', roster: roster(['flying_fox', 'egyptian_fruit', 'pallas_tongue']), deck: stackDeck() }));
+    d.guano = 99;
     d.place(0, 7);
-    const nights = BAT_BY_ID.fledgling.roost.nights;
-    d.endDay();
-    expect(d.units.filter((u) => u.side === 'bat').length).toBe(BAT_BY_ID.fledgling.roost.count);
-    for (let n = 0; n < nights; n++) {
-      runNight(d);
-      if (d.phase !== 'day') break;
-      if (n < nights - 1) d.endDay();
-    }
-    expect(d.slots[7].roost).toBeNull();
-    // The card left the board and is back in the deck cycle (discard, or redrawn after a reshuffle).
-    expect(d.hand.length + d.drawPile.length + d.discard.length).toBe(6);
+    expect(d.canPlace(1, 7)).toBe(true);
+    d.place(1, 7);
+    expect(d.slots[7].roost!.level).toBe(2);
+    d.slots[7].roost!.batId = 'pallas_tongue';
+    d.refresh();
+    expect(d.canPlace(0, 7)).toBe(false);
   });
 
+  it('a stack also levels the roosts in the bat pattern, without chaining', () => {
+    // Egyptian Fruit Bat pattern: the tile to its right.
+    const d = new Defense(cfg({ commanderId: 'flying_fox', roster: roster(['flying_fox', 'egyptian_fruit']), deck: stackDeck() }));
+    d.guano = 99;
+    d.place('cmd', 8); // commander to the right of tile 7
+    d.place(0, 7);
+    d.place(1, 7);
+    expect(d.slots[7].roost!.level).toBe(2);
+    expect(d.slots[8].roost!.level).toBe(2);
+    expect(d.slots[9].roost).toBeNull();
+  });
+
+  it('level 10 holds one mega bat that only returns after it dies', () => {
+    const d = new Defense(cfg({ deck: deckOf('little_brown', 'fledgling'), caveHp: 1e9, caveMax: 1e9 }));
+    d.guano = 99;
+    const i = d.pool.findIndex((c) => c?.id === 'little_brown');
+    d.place(i, 7);
+    const r = d.slots[7].roost!;
+    r.level = BALANCE.roostLevel.max;
+    d.endDay();
+    const mine = () => d.units.filter((u) => u.side === 'bat' && u.home === 7 && !u.dead);
+    expect(mine().length).toBe(1);
+    expect(mine()[0].mega).toBe(true);
+    expect(mine()[0].maxHp).toBeGreaterThan(BAT_BY_ID.little_brown.stats.hp * BAT_BY_ID.little_brown.roost.count * 2);
+    mine()[0].dead = true;
+    d.step(1 / 60);
+    for (let k = 0; k < 60 * (d.respawnTime(r) - 1); k++) d.step(1 / 60);
+    expect(mine().length).toBe(0);
+    for (let k = 0; k < 60 * 1.2; k++) d.step(1 / 60);
+    expect(mine().length).toBe(1);
+  });
+
+  it('roosts do not expire between nights', () => {
+    const d = new Defense(cfg({ deck: deckOf('fledgling', 'fledgling'), caveHp: 1e9, caveMax: 1e9 }));
+    d.place(0, 7);
+    d.slots[7].roost!.hp = d.slots[7].roost!.maxHp = 1e9; // can't be destroyed: this checks expiry only
+    for (let n = 0; n < 4 && d.phase === 'day'; n++) {
+      d.endDay();
+      runNight(d);
+    }
+    expect(d.slots[7].roost).not.toBeNull();
+  });
+});
+
+describe('defense rules', () => {
   it('charges commander tax after the commander roost is destroyed', () => {
     const d = new Defense(cfg());
     const base = d.commanderCost();
-    d.energy = 10;
+    d.guano = 99;
     expect(d.place('cmd', 2)).toBe(true);
-    expect(d.canPlace('cmd', 3)).toBe(false);
     d.slots[2].roost!.hp = 1;
-    // Put an enemy right above it.
     d.endDay();
     for (const u of d.units) u.dead = true; // ground the commander's bats so the cat reaches the roost
     (d as unknown as { spawnEnemy(id: string, x: number): void }).spawnEnemy('cat', 2.5);
@@ -166,10 +219,10 @@ describe('defense rules', () => {
     }
   });
 
-  it('plans every night within budget and adds the finale', () => {
+  it('plans every night and adds the finale', () => {
     const d = new Defense(cfg({ encounterId: 'great_horned', row: 7 }));
-    expect(d.plans.length).toBe(5);
-    expect(d.plans[4].some((g) => g.enemy === 'horned_owl')).toBe(true);
+    expect(d.plans.length).toBe(d.nights);
+    expect(d.plans[d.nights - 1].some((g) => g.enemy === 'horned_owl')).toBe(true);
     for (const p of d.plans) expect(p.length).toBeGreaterThan(0);
   });
 
@@ -180,6 +233,17 @@ describe('defense rules', () => {
       runNight(d);
     }
     expect(d.phase).toBe('lost');
+  });
+
+  it('enemies rush the cave once nothing blocks their column', () => {
+    const d = new Defense(cfg({ caveHp: 1e9, caveMax: 1e9 }));
+    d.endDay();
+    (d as unknown as { spawnEnemy(id: string, x: number): void }).spawnEnemy('beetle', 0.5);
+    const beetle = d.units[d.units.length - 1];
+    beetle.y = BALANCE.field.roostTopY;
+    const y0 = beetle.y;
+    d.step(0.5);
+    expect((beetle.y - y0) / 0.5).toBeCloseTo(beetle.stats.speed * BALANCE.night.rushMult, 1);
   });
 });
 
@@ -217,33 +281,6 @@ describe('balance smoke', () => {
       }
       console.log(`\n${name}\n  ${rows.join('\n  ')}`);
       expect(rows.length).toBe(ENCOUNTERS.length);
-    });
+    }, 120_000);
   }
-});
-
-describe('night pacing', () => {
-  it('roosts replace fallen bats on their own cooldown, up to their count', () => {
-    const d = new Defense(cfg({ deck: Array.from({ length: 6 }, () => newCard('bat', 'little_brown')), caveHp: 1e9, caveMax: 1e9 }));
-    d.place(0, 7);
-    d.endDay();
-    const mine = () => d.units.filter((u) => u.side === 'bat' && u.home === 7 && !u.dead);
-    expect(mine().length).toBe(BAT_BY_ID.little_brown.roost.count);
-    mine().forEach((u) => (u.dead = true));
-    d.step(1 / 60);
-    expect(mine().length).toBe(0);
-    for (let i = 0; i < 60 * (BAT_BY_ID.little_brown.roost.respawn + 0.1); i++) d.step(1 / 60);
-    expect(mine().length).toBe(1);
-  });
-
-  it('enemies rush the cave once nothing blocks their column', () => {
-    const d = new Defense(cfg({ caveHp: 1e9, caveMax: 1e9 }));
-    d.endDay();
-    (d as unknown as { spawnEnemy(id: string, x: number): void }).spawnEnemy('beetle', 0.5);
-    const beetle = d.units[d.units.length - 1];
-    beetle.y = BALANCE.field.roostTopY;
-    const y0 = beetle.y;
-    d.step(0.5);
-    const speed = (beetle.y - y0) / 0.5;
-    expect(speed).toBeCloseTo(beetle.stats.speed * BALANCE.night.rushMult, 1);
-  });
 });

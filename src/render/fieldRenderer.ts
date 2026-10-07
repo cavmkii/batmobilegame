@@ -16,8 +16,10 @@ const OY = 22;
 export const toScreen = (x: number, y: number) => ({ sx: x * TX, sy: OY + y * TY });
 
 export interface Highlight {
-  /** slot idx -> 'ok' | 'bonus' (terrain match) */
-  slots: Map<number, 'ok' | 'bonus'>;
+  /** slot idx -> 'ok' (empty tile) | 'bonus' (terrain match) | 'stack' (same-type roost to level up) */
+  slots: Map<number, 'ok' | 'bonus' | 'stack'>;
+  /** Tiles a stack would also level through the bat's pattern. */
+  pattern: Set<number>;
   batId: string | null;
 }
 
@@ -92,24 +94,25 @@ export class FieldRenderer {
         g.fillText(TERRAIN[s.terrain].icon, x0 + 2, y0 + 15);
         g.globalAlpha = 1;
       }
+      if (s.roost) this.drawRoost(s.roost, sx, sy, x0, y0, w, h);
+      if (hl.pattern.has(s.idx)) {
+        g.fillStyle = 'rgba(120,200,255,0.18)';
+        g.fillRect(x0, y0, w, h);
+      }
       const mark = hl.slots.get(s.idx);
       if (mark) {
-        g.strokeStyle = mark === 'bonus' ? '#7dff9a' : '#ffc23d';
-        g.lineWidth = 2;
-        g.setLineDash([4, 3]);
+        g.strokeStyle = mark === 'stack' ? '#7ac8ff' : mark === 'bonus' ? '#7dff9a' : '#ffc23d';
+        g.lineWidth = mark === 'stack' ? 3 : 2;
+        g.setLineDash(mark === 'stack' ? [] : [4, 3]);
         g.strokeRect(x0 + 1, y0 + 1, w - 2, h - 2);
         g.setLineDash([]);
-        if (hl.batId) {
-          const n = d.neighbourMatches(s.idx, hl.batId);
-          if (n) {
-            g.fillStyle = '#7dff9a';
-            g.font = 'bold 9px monospace';
-            g.textAlign = 'right';
-            g.fillText(`+${n}`, x0 + w - 3, y0 + h - 4);
-          }
+        if (mark === 'stack') {
+          g.fillStyle = '#7ac8ff';
+          g.font = 'bold 10px monospace';
+          g.textAlign = 'center';
+          g.fillText('+1', sx, y0 + h - 8);
         }
       }
-      if (s.roost) this.drawRoost(s.roost, sx, sy, x0, y0, w, h);
     }
   }
 
@@ -141,7 +144,7 @@ export class FieldRenderer {
     });
     // Refill progress toward the next bat (night only).
     if (this.d.phase === 'night' && r.respawnTimer > 0) {
-      const p = Math.min(1, r.respawnTimer / r.bp.roost.respawn);
+      const p = Math.min(1, r.respawnTimer / this.d.respawnTime(r));
       g.strokeStyle = '#9ab8ff';
       g.lineWidth = 2;
       g.beginPath();
@@ -154,11 +157,19 @@ export class FieldRenderer {
     g.fillRect(x0 + 4, y0 + h - 2, w - 8, 3);
     g.fillStyle = pct > 0.5 ? '#62e27a' : pct > 0.25 ? '#e2c25a' : '#e25a5a';
     g.fillRect(x0 + 4, y0 + h - 2, (w - 8) * pct, 3);
-    // Nights left (∞ for the commander)
-    g.font = 'bold 9px monospace';
+    // Level badge (♛ marks the commander).
+    const mega = this.d.isMega(r);
+    g.font = 'bold 10px monospace';
     g.textAlign = 'right';
-    g.fillStyle = r.card ? '#ffe8a0' : '#ffc23d';
-    g.fillText(r.card ? `${r.nightsLeft}🌙` : '♛', x0 + w - 2, y0 + 18);
+    g.fillStyle = '#000';
+    g.fillText(mega ? 'MEGA' : `L${r.level}`, x0 + w - 1, y0 + 20);
+    g.fillStyle = mega ? '#ff9a3d' : r.level >= 5 ? '#ffe14a' : '#e8e0f8';
+    g.fillText(mega ? 'MEGA' : `L${r.level}`, x0 + w - 2, y0 + 19);
+    if (r.isCommander) {
+      g.fillStyle = '#ffc23d';
+      g.textAlign = 'left';
+      g.fillText('♛', x0 + 14, y0 + 19);
+    }
   }
 
   private drawPreview() {
@@ -221,7 +232,7 @@ export class FieldRenderer {
     let img: HTMLCanvasElement;
     if (u.side === 'bat') {
       const t = d.clock + u.id * 0.37;
-      img = batSprite(u.defId, (Math.floor(t * 7) % 2) as 0 | 1, 0.85);
+      img = batSprite(u.defId, (Math.floor(t * 7) % 2) as 0 | 1, u.mega ? 1.7 : 0.85);
       sy += Math.sin(t * 6) * 2;
     } else {
       img = enemySprite(u.defId, u.sinceAttack < 0.06, 0.9);
@@ -276,7 +287,7 @@ export class FieldRenderer {
       const age = (d.clock - fx.t) / 0.8;
       const { sx, sy } = toScreen(fx.x, fx.y);
       g.globalAlpha = Math.max(0, 1 - age);
-      g.strokeStyle = { blast: '#ffa040', stun: '#ffe060', heal: '#70ff90', buff: '#ff70d0', slow: '#80a0ff', death: '#d0c0e0', place: '#ffc23d' }[fx.kind];
+      g.strokeStyle = { blast: '#ffa040', stun: '#ffe060', heal: '#70ff90', buff: '#ff70d0', slow: '#80a0ff', death: '#d0c0e0', place: '#ffc23d', level: '#7ac8ff' }[fx.kind];
       g.lineWidth = 2;
       g.beginPath();
       g.arc(sx, sy, Math.max(3, fx.r * TX * (0.4 + age * 0.6)), 0, Math.PI * 2);

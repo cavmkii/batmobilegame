@@ -5,13 +5,16 @@ export const BALANCE = {
   field: { cols: 5, roostRows: 3, height: 10, roostTopY: 6, caveY: 9.4 },
   /** Old lane stats (range/speed in lane units) convert to tiles with these factors. */
   units: { rangePerTile: 100, minMelee: 0.35, batSpeed: 2.5 / 100, enemySpeed: 1.6 / 100 },
-  day: { startEnergy: 3, energyPerDay: 1, energyCap: 8, openingHand: 5, drawPerDay: 2, maxHand: 7 },
+  /** Guano: the in-level currency for placing bats, refreshing the pool and casting spells. */
+  economy: { startGuano: 6, perDawn: 5, killsPerGuano: 4, refreshCost: 2, poolSize: 2, spellHandMax: 3 },
+  /** Roost levels from stacking. Level 10 holds one mega bat instead of a group. */
+  roostLevel: { max: 10, statPct: 15, hpPct: 12, megaHpMult: 3, megaAtkMult: 1.5, megaRespawnMult: 2 },
   /** An enemy that reaches the cave hits once for atk × leakMult, then is gone (classic TD leak).
    *  Inside the roost zone with nothing blocking its column, an enemy rushes at speed × rushMult. */
   night: { maxSeconds: 75, groupGap: 3, spawnGap: 0.7, leakMult: 4, rushMult: 3 },
   commander: { tax: 2 },
   knockback: { distance: 0.5, duration: 0.4 },
-  adjacency: { atkPctPerNeighbour: 10, maxAtkPct: 30, vampireDawnHealPct: 20 },
+  adjacency: { vampireDawnHealPct: 20 },
   /** Stats gain this fraction of base per level above 1. */
   levelScaling: 0.2,
   /** Enemy stats scale this much per map row. */

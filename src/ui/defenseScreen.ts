@@ -1,3 +1,4 @@
+import { BALANCE } from '../data/balance';
 import { BAT_BY_ID } from '../data/bats';
 import { RARITY_COLOR } from '../data/clans';
 import { ENEMY_BY_ID } from '../data/enemies';
@@ -9,19 +10,21 @@ import { blueprint, describeTrait } from '../game/progression';
 import { resolveBattle } from '../game/run';
 import { FieldRenderer, VIEW_H, VIEW_W, type Highlight } from '../render/fieldRenderer';
 import { registerScreen } from './app';
-import { batImg, clanPips, rarityOf } from './components';
+import { batImg, clanPips, patternGrid, rarityOf } from './components';
 import { h } from './dom';
 import { endRun } from './runScreens';
 
 const hash = (s: string) => [...s].reduce((a, c) => (Math.imul(a, 31) + c.charCodeAt(0)) >>> 0, 7);
 
-type Sel = number | 'cmd' | null;
+type Sel = { kind: 'pool'; i: number } | { kind: 'spell'; i: number } | { kind: 'cmd' } | null;
 
 function tonightSummary(d: Defense): string {
   const total = new Map<string, number>();
   for (const g of d.tonight) total.set(g.enemy, (total.get(g.enemy) ?? 0) + g.count);
   return [...total].map(([id, n]) => `${n} ${ENEMY_BY_ID[id].name}${n > 1 ? 's' : ''}`).join(', ');
 }
+
+const same = (a: Sel, b: Sel) => JSON.stringify(a) === JSON.stringify(b);
 
 registerScreen('battle', (app) => {
   const r = app.profile.run!;
@@ -50,58 +53,75 @@ registerScreen('battle', (app) => {
   const caveFill = h('div');
   const caveText = h('span.small');
   const info = h('div.info-line');
-  const energy = h('div.energy-pips');
+  const guano = h('div.guano');
   const piles = h('span.small.muted');
+  const refreshBtn = h('button.refresh', { onclick: () => { if (d.refresh()) { sel = null; note = 'New cards in the pool.'; } } });
   const endBtn = h('button.primary.end-day', { onclick: () => { sel = null; note = ''; d.endDay(); } }, 'End day ☾');
   const speedBtn = h('button.ghost.small', { onclick: () => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; speedBtn.textContent = `${speed}×`; } }, '1×');
-  const hand = h('div.hand-row');
+  const cards = h('div.hand-row');
   const overlay = h('div.battle-overlay');
 
   const selectedBat = (): string | null => {
-    if (d.phase !== 'day') return null;
-    if (sel === 'cmd') return d.commander.inPlay ? null : d.commander.bp.batId;
-    if (typeof sel === 'number') {
-      const c = d.hand[sel];
+    if (d.phase !== 'day' || !sel) return null;
+    if (sel.kind === 'cmd') return d.commander.inPlay ? null : d.commander.bp.batId;
+    if (sel.kind === 'pool') {
+      const c = d.pool[sel.i];
       return c && c.kind === 'bat' ? c.id : null;
     }
     return null;
   };
+  const selSource = () => (sel?.kind === 'cmd' ? 'cmd' : sel?.kind === 'pool' ? sel.i : null);
 
   const highlight = (): Highlight => {
-    const slots = new Map<number, 'ok' | 'bonus'>();
+    const slots = new Map<number, 'ok' | 'bonus' | 'stack'>();
+    const pattern = new Set<number>();
     const batId = selectedBat();
-    if (batId && sel !== null) {
-      for (const s of d.slots) if (d.canPlace(sel, s.idx)) slots.set(s.idx, d.terrainMatches(s.idx, batId) ? 'bonus' : 'ok');
+    const src = selSource();
+    if (batId && src !== null) {
+      for (const s of d.slots) {
+        if (!d.canPlace(src, s.idx)) continue;
+        if (s.roost) {
+          slots.set(s.idx, 'stack');
+          for (const t of d.patternTiles(s.idx, batId)) if (t.roost) pattern.add(t.idx);
+        } else slots.set(s.idx, d.terrainMatches(s.idx, batId) ? 'bonus' : 'ok');
+      }
     }
-    return { slots, batId };
+    return { slots, pattern, batId };
   };
 
-  const describeCard = (c: Card | 'cmd'): string => {
-    if (c === 'cmd' || c.kind === 'bat') {
-      const bp = c === 'cmd' ? d.commander.bp : blueprint(c.id, app.profile.roster[c.id], c.upgraded);
-      const nights = c === 'cmd' ? 'stays until destroyed' : `${bp.roost.nights} nights`;
-      const traits = bp.traits.map(describeTrait).join(', ');
-      return `${bp.name}: roost ❤${bp.roost.hp}, ${nights}. Keeps ${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''} out (❤${bp.stats.hp} ⚔${bp.stats.atk}), replacing one every ${bp.roost.respawn}s${traits ? ' · ' + traits : ''}. Tap a tile.`;
-    }
-    const s = SPELL_BY_ID[c.id];
-    return `${s.name}: ${s.desc}${c.upgraded ? ' (+40%)' : ''} ${d.canCast(sel as number) ? 'Tap again to cast.' : d.phase === 'day' ? 'Hold it for the night.' : 'Not enough energy.'}`;
+  const describeBat = (batId: string, upgraded: boolean, isCmd: boolean): string => {
+    const bp = isCmd ? d.commander.bp : blueprint(batId, app.profile.roster[batId], upgraded);
+    const traits = bp.traits.map(describeTrait).join(', ');
+    const stackable = d.slots.some((s) => s.roost && d.canStackOn(s, batId));
+    return `${bp.name}: roost ❤${bp.roost.hp}, keeps ${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''} out (❤${bp.stats.hp} ⚔${bp.stats.atk}), +1 every ${bp.roost.respawn}s${traits ? ' · ' + traits : ''}. `
+      + (isCmd ? 'Tap an empty tile.' : stackable ? 'Tap its roost (blue) to level it and its pattern, or an empty tile.' : 'Tap a tile.');
   };
 
-  const select = (s: Sel) => {
-    sel = sel === s ? null : s;
+  const onPool = (i: number) => {
+    const c = d.pool[i];
+    if (!c) return;
+    const s: Sel = { kind: 'pool', i };
+    if (c.kind === 'spell' && same(sel, s)) {
+      if (d.takeSpell(i)) note = `${SPELL_BY_ID[c.id].name} added to your spells.`;
+      else note = d.phase !== 'day' ? 'Take spells during the day.' : `You can hold at most ${BALANCE.economy.spellHandMax} spells.`;
+      sel = null;
+      return;
+    }
+    sel = same(sel, s) ? null : s;
     note = '';
   };
 
-  const onCard = (i: number) => {
-    const c = d.hand[i];
-    if (!c) return;
-    if (c.kind === 'spell' && sel === i && d.canCast(i)) {
+  const onSpell = (i: number) => {
+    const c = d.spells[i];
+    const s: Sel = { kind: 'spell', i };
+    if (same(sel, s) && d.canCast(i)) {
       d.cast(i);
-      sel = null;
       note = `Cast ${SPELL_BY_ID[c.id].name}.`;
+      sel = null;
       return;
     }
-    select(i);
+    sel = same(sel, s) ? null : s;
+    note = '';
   };
 
   canvas.addEventListener('pointerdown', (e) => {
@@ -110,20 +130,21 @@ registerScreen('battle', (app) => {
     const scale = Math.min(rect.width / VIEW_W, rect.height / VIEW_H);
     const offX = (rect.width - VIEW_W * scale) / 2;
     const offY = (rect.height - VIEW_H * scale) / 2;
-    const px = (e.clientX - rect.left - offX) / scale;
-    const py = (e.clientY - rect.top - offY) / scale;
-    const slot = renderer.slotAt(px, py);
+    const slot = renderer.slotAt((e.clientX - rect.left - offX) / scale, (e.clientY - rect.top - offY) / scale);
     if (slot < 0) return;
-    if (sel !== null && selectedBat() && d.canPlace(sel, slot)) {
-      d.place(sel, slot);
+    const src = selSource();
+    if (src !== null && selectedBat() && d.canPlace(src, slot)) {
+      const stacking = !!d.slots[slot].roost;
+      d.place(src, slot);
+      const ro = d.slots[slot].roost!;
+      note = stacking ? `Level ${ro.level}${d.isMega(ro) ? ': MEGA BAT!' : '.'}` : '';
       sel = null;
-      note = '';
       return;
     }
     const s = d.slots[slot];
     if (s.roost) {
-      const bp = s.roost.bp;
-      note = `${bp.name}: roost ❤${Math.round(s.roost.hp)}/${s.roost.maxHp}, ${s.roost.card ? `${s.roost.nightsLeft} night${s.roost.nightsLeft > 1 ? 's' : ''} left` : 'commander'}, keeps ${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''} out, +1 every ${bp.roost.respawn}s.`;
+      const ro = s.roost;
+      note = `${ro.bp.name} roost, level ${ro.level}${d.isMega(ro) ? ' (mega)' : ''}: ❤${Math.round(ro.hp)}/${ro.maxHp}, ${d.isMega(ro) ? 'one giant bat' : `${ro.bp.roost.count} bats`}, +1 every ${d.respawnTime(ro)}s.`;
     } else if (s.terrain) {
       const t = TERRAIN[s.terrain];
       note = `${t.icon} ${t.name}: ${t.desc} ${t.basis}`;
@@ -131,27 +152,25 @@ registerScreen('battle', (app) => {
     sel = null;
   });
 
-  const handCard = (c: Card | 'cmd', i: number | 'cmd') => {
-    const isCmd = c === 'cmd';
-    const id = isCmd ? d.commander.bp.batId : c.id;
-    const kind = isCmd ? 'bat' : c.kind;
-    const cost = isCmd ? d.commanderCost() : d.cardCost(c);
-    const playable = isCmd
-      ? d.phase === 'day' && !d.commander.inPlay && d.energy >= cost
-      : kind === 'bat' ? d.phase === 'day' && d.energy >= cost : d.canCast(i as number);
+  const cardEl = (o: { card: Card | null; isCmd?: boolean; sel: Sel; onTap: () => void; playable: boolean; tag?: string }) => {
+    if (!o.card && !o.isCmd) return h('div.hand-card.empty', h('div.empty-label', 'empty'));
+    const isCmd = !!o.isCmd;
+    const id = isCmd ? d.commander.bp.batId : o.card!.id;
+    const kind = isCmd ? 'bat' : o.card!.kind;
+    const cost = isCmd ? d.commanderCost() : d.cardCost(o.card!);
     const name = kind === 'bat' ? BAT_BY_ID[id].name : SPELL_BY_ID[id].name;
     const clans = kind === 'bat' ? BAT_BY_ID[id].clans : SPELL_BY_ID[id].clans;
-    const cls = ['hand-card', isCmd ? 'commander' : '', sel === i ? 'selected' : '', playable ? '' : 'disabled', kind === 'spell' ? 'spell' : ''].filter(Boolean).join('.');
+    const cls = ['hand-card', isCmd ? 'commander' : '', same(sel, o.sel) ? 'selected' : '', o.playable ? '' : 'disabled', kind === 'spell' ? 'spell' : ''].filter(Boolean).join('.');
     return h(`button.${cls}`, {
-      style: `--rarity:${isCmd ? 'var(--accent)' : RARITY_COLOR[rarityOf(c as Card)]}`,
-      onpointerdown: (e: PointerEvent) => { e.preventDefault(); if (isCmd) select('cmd'); else onCard(i as number); },
+      style: `--rarity:${isCmd ? 'var(--accent)' : RARITY_COLOR[rarityOf(o.card!)]}`,
+      onpointerdown: (e: PointerEvent) => { e.preventDefault(); o.onTap(); },
     },
     h('span.cost', cost),
     kind === 'bat' ? batImg(id, 2) : h('div.spell-icon', SPELL_BY_ID[id].icon),
-    h('div.hc-name', name.replace(/ Bat$/, '') + (!isCmd && c.upgraded ? '+' : '')),
+    h('div.hc-name', name.replace(/ Bat$/, '') + (!isCmd && o.card!.upgraded ? '+' : '')),
     clanPips(clans),
-    isCmd ? h('div.tax', d.commander.inPlay ? 'in play' : d.commander.deaths ? `tax +${d.commander.deaths * d.commander.taxStep}` : 'command zone') : '',
-    kind === 'spell' ? h('div.instant', 'instant') : '',
+    kind === 'bat' && !isCmd ? patternGrid(id, 'xs') : '',
+    o.tag ? h('div.tax', o.tag) : '',
     );
   };
 
@@ -164,23 +183,54 @@ registerScreen('battle', (app) => {
     caveText.textContent = `${Math.max(0, Math.round(d.cave.hp))}`;
     endBtn.style.display = isDay ? '' : 'none';
     speedBtn.style.display = isDay ? 'none' : '';
-    const k = [d.phase, d.day, Math.floor(d.energy), d.energyCap, sel, d.commander.inPlay, d.commander.deaths, d.hand.map((c) => c.uid).join(','), note].join('|');
+    const k = [d.phase, d.day, d.guano, JSON.stringify(sel), d.commander.inPlay, d.commander.deaths,
+      d.pool.map((c) => c?.uid ?? '-').join(','), d.spells.map((c) => c.uid).join(','), note,
+      d.slots.map((s) => s.roost?.level ?? 0).join('.')].join('|');
     if (k === key) return;
     key = k;
-    energy.replaceChildren(
-      h('span.small.muted', '⚡'),
-      ...Array.from({ length: Math.max(d.energyCap, Math.floor(d.energy)) }, (_, i) => h(`span.pip-e${i < Math.floor(d.energy) ? '.on' : ''}`)),
-      h('span.small', ` ${Math.floor(d.energy)}`),
-    );
+    guano.replaceChildren(h('span.g-icon', '◆'), h('b', String(d.guano)), h('span.small.muted', ' guano'));
     piles.textContent = `deck ${d.drawPile.length} · discard ${d.discard.length}`;
-    hand.replaceChildren(handCard('cmd', 'cmd'), ...d.hand.map((c, i) => handCard(c, i)));
+    refreshBtn.textContent = `↻ ${d.refreshCost}`;
+    refreshBtn.disabled = !d.canRefresh();
+    refreshBtn.title = 'Discard the pool and draw new cards';
+    refreshBtn.style.display = isDay ? '' : 'none';
+
+    const cmdPlayable = isDay && !d.commander.inPlay && d.guano >= d.commanderCost();
+    cards.replaceChildren(
+      cardEl({
+        card: null, isCmd: true, sel: { kind: 'cmd' }, playable: cmdPlayable,
+        onTap: () => { sel = same(sel, { kind: 'cmd' }) ? null : { kind: 'cmd' }; note = ''; },
+        tag: d.commander.inPlay ? 'in play' : d.commander.deaths ? `tax +${d.commander.deaths * d.commander.taxStep}` : 'command',
+      }),
+      h('div.row-label', 'pool'),
+      ...d.pool.map((c, i) => cardEl({
+        card: c, sel: { kind: 'pool', i }, onTap: () => onPool(i),
+        playable: !!c && isDay && (c.kind === 'spell' ? d.canTakeSpell(i) : d.guano >= d.cardCost(c)),
+        tag: c?.kind === 'spell' ? 'take' : undefined,
+      })),
+      refreshBtn,
+      d.spells.length ? h('div.row-label', 'spells') : '',
+      ...d.spells.map((c, i) => cardEl({ card: c, sel: { kind: 'spell', i }, onTap: () => onSpell(i), playable: d.canCast(i), tag: 'instant' })),
+    );
+
     let text = note;
-    if (!text && sel !== null) text = describeCard(sel === 'cmd' ? 'cmd' : d.hand[sel]);
+    if (!text && sel) {
+      if (sel.kind === 'cmd') text = describeBat(d.commander.bp.batId, false, true);
+      else if (sel.kind === 'pool') {
+        const c = d.pool[sel.i];
+        if (c) text = c.kind === 'bat'
+          ? describeBat(c.id, c.upgraded, false)
+          : `${SPELL_BY_ID[c.id].name}: ${SPELL_BY_ID[c.id].desc} Tap again to take it (free); casting costs ${d.cardCost(c)} guano.`;
+      } else {
+        const c = d.spells[sel.i];
+        if (c) text = `${SPELL_BY_ID[c.id].name}: ${SPELL_BY_ID[c.id].desc} ${d.canCast(sel.i) ? 'Tap again to cast.' : d.phase === 'day' ? 'Cast it at night.' : 'Not enough guano.'}`;
+      }
+    }
     if (!text) {
       text = isDay
         ? d.day === 1
-          ? 'Tonight\'s enemies are shown at the top. Tap a bat, then a tile, to build a roost. Unspent energy carries into the night for spells.'
-          : `Dawn. Tonight: ${tonightSummary(d)}.`
+          ? `Tonight's enemies are shown at the top. Place a bat from the pool, or stack a copy on its roost to level it up. A used card leaves its slot empty: ↻ rerolls the pool for ${d.refreshCost} guano, and dawn refills empty slots.`
+          : `Dawn: +${d.lastIncome} guano. Tonight: ${tonightSummary(d)}.`
         : 'Bats fly out on their own. Spells are instants: tap one twice to cast.';
     }
     info.textContent = text;
@@ -204,7 +254,8 @@ registerScreen('battle', (app) => {
       d.clock += elapsed;
       acc = 0;
     }
-    if (sel !== null && typeof sel === 'number' && !d.hand[sel]) sel = null;
+    if (sel?.kind === 'pool' && !d.pool[sel.i]) sel = null;
+    if (sel?.kind === 'spell' && !d.spells[sel.i]) sel = null;
     renderer.draw(highlight());
     updateUi();
     if ((d.phase === 'won' || d.phase === 'lost') && !finished) {
@@ -236,7 +287,7 @@ registerScreen('battle', (app) => {
     ),
     h('div.canvas-wrap', canvas, overlay),
     info,
-    h('div.def-controls', energy, piles, endBtn),
-    hand,
+    h('div.def-controls', guano, piles, endBtn),
+    cards,
   );
 });

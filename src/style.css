@@ -227,3 +227,16 @@ header.bar .currency { font-size: 13px; gap: 8px; }
 .hand-card.selected { transform: translateY(-6px); box-shadow: 0 0 0 2px var(--accent), 0 6px 14px rgba(0,0,0,.5); }
 .hand-card.spell { background: linear-gradient(180deg, #2a2050, var(--panel)); }
 .instant { font-size: 8px; text-transform: uppercase; letter-spacing: .06em; color: #9ab8ff; }
+.pattern { display: grid; gap: 2px; width: 46px; margin-top: 4px; }
+.pattern.xs { width: 34px; display: inline-grid; vertical-align: middle; }
+.pattern span { aspect-ratio: 1; background: #2a2240; border-radius: 2px; }
+.pattern span.on { background: #7ac8ff; }
+.pattern span.me { background: var(--accent); }
+.pattern.none { display: block; width: auto; font-size: 10px; color: var(--muted); }
+.guano { display: flex; align-items: baseline; gap: 4px; font-size: 16px; }
+.g-icon { color: #c8a060; }
+.row-label { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 9px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); align-self: center; }
+.hand-card.empty { display: grid; place-items: center; }
+.empty-label { font-size: 10px; color: var(--muted); }
+.refresh { flex: 0 0 auto; align-self: center; padding: 10px 8px; font-weight: 800; color: #9ad0ff; border-color: #3a5a8a; }
+.hand-card .pattern.xs { width: 26px; margin-top: 2px; }
