@@ -40,7 +40,8 @@ export function cardFace(card: Pick<Card, 'kind' | 'id' | 'upgraded'>, owned?: O
     const lvl = owned ? `Lv ${owned.level}${owned.plus ? `+${owned.plus}` : ''}` : 'Lv 1 (unowned)';
     sub = def.basic ? 'Basic' : lvl;
     lines = [
-      `Roost ❤${fmt(bp.roost.hp)} · ${def.commander ? '♛ until destroyed' : `${bp.roost.nights} nights`} · ×${bp.roost.count} bats`,
+      `Roost ❤${fmt(bp.roost.hp)} · ${def.commander ? '♛ until destroyed' : `${bp.roost.nights} nights`}`,
+      `${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''} out, refills 1 every ${bp.roost.respawn}s`,
       `Each bat ❤${fmt(bp.stats.hp)} ⚔${fmt(bp.stats.atk)} ${bp.stats.range >= 100 ? 'ranged' : 'melee'}`,
       ...bp.traits.map(describeTrait),
     ];

@@ -31,6 +31,8 @@ export interface Roost {
   hp: number;
   maxHp: number;
   nightsLeft: number;
+  /** Seconds accumulated toward replacing a fallen bat (night only). */
+  respawnTimer: number;
 }
 
 export interface Slot {
@@ -224,6 +226,7 @@ export class Defense {
       hp: Math.round(maxHp),
       maxHp: Math.round(maxHp),
       nightsLeft: bp.roost.nights + (card ? this.relic.roostNights : 0),
+      respawnTimer: 0,
     };
     this.effects.push({ kind: 'place', x: slot.x, y: slot.y, r: 0.6, t: this.clock });
     return true;
@@ -245,6 +248,7 @@ export class Defense {
     this.buffs = { atkPct: 0, lifesteal: 0, atkUntil: 0, hastePct: 0, hasteUntil: 0, slowPct: 0, slowUntil: 0 };
     for (const slot of this.slots) {
       if (!slot.roost) continue;
+      slot.roost.respawnTimer = 0;
       const mods = this.modsFor(slot);
       for (let k = 0; k < slot.roost.bp.roost.count; k++) {
         this.spawnBat(slot.roost.bp, slot.x + (k - (slot.roost.bp.roost.count - 1) / 2) * 0.18, slot.y - 0.3, slot.idx, mods);
@@ -272,6 +276,8 @@ export class Defense {
       const s = this.spawnQueue.shift()!;
       this.spawnEnemy(s.enemy, s.x);
     }
+
+    this.respawnBats(dt);
 
     const alive = this.units.filter((u) => !u.dead);
     const bats = alive.filter((u) => u.side === 'bat');
@@ -355,6 +361,24 @@ export class Defense {
       else groups.push({ enemy: id, count, col });
     }
     return groups;
+  }
+
+  /** Each roost tops its bats back up to its count, one at a time, on its own cooldown. */
+  private respawnBats(dt: number) {
+    for (const slot of this.slots) {
+      const r = slot.roost;
+      if (!r) continue;
+      const out = this.units.filter((u) => u.side === 'bat' && !u.dead && u.home === slot.idx).length;
+      if (out >= r.bp.roost.count) {
+        r.respawnTimer = 0;
+        continue;
+      }
+      r.respawnTimer += dt;
+      if (r.respawnTimer >= r.bp.roost.respawn) {
+        r.respawnTimer = 0;
+        this.spawnBat(r.bp, slot.x, slot.y - 0.3, slot.idx, this.modsFor(slot));
+      }
+    }
   }
 
   private startDay() {
@@ -587,7 +611,9 @@ export class Defense {
     const atCave = !bat && !roostSlot && F.caveY - u.y <= range;
 
     if (!bat && !roostSlot && !atCave) {
-      u.y += u.stats.speed * dt;
+      const blocked = this.slots.some((s) => s.roost && Math.abs(s.x - u.x) <= 0.5 && s.y > u.y);
+      const rushing = !blocked && u.y >= F.roostTopY - 0.5;
+      u.y += u.stats.speed * (rushing ? BALANCE.night.rushMult : 1) * dt;
       return;
     }
     if (u.atkTimer > 0) return;

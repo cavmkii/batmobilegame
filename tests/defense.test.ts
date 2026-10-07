@@ -220,3 +220,30 @@ describe('balance smoke', () => {
     });
   }
 });
+
+describe('night pacing', () => {
+  it('roosts replace fallen bats on their own cooldown, up to their count', () => {
+    const d = new Defense(cfg({ deck: Array.from({ length: 6 }, () => newCard('bat', 'little_brown')), caveHp: 1e9, caveMax: 1e9 }));
+    d.place(0, 7);
+    d.endDay();
+    const mine = () => d.units.filter((u) => u.side === 'bat' && u.home === 7 && !u.dead);
+    expect(mine().length).toBe(BAT_BY_ID.little_brown.roost.count);
+    mine().forEach((u) => (u.dead = true));
+    d.step(1 / 60);
+    expect(mine().length).toBe(0);
+    for (let i = 0; i < 60 * (BAT_BY_ID.little_brown.roost.respawn + 0.1); i++) d.step(1 / 60);
+    expect(mine().length).toBe(1);
+  });
+
+  it('enemies rush the cave once nothing blocks their column', () => {
+    const d = new Defense(cfg({ caveHp: 1e9, caveMax: 1e9 }));
+    d.endDay();
+    (d as unknown as { spawnEnemy(id: string, x: number): void }).spawnEnemy('beetle', 0.5);
+    const beetle = d.units[d.units.length - 1];
+    beetle.y = BALANCE.field.roostTopY;
+    const y0 = beetle.y;
+    d.step(0.5);
+    const speed = (beetle.y - y0) / 0.5;
+    expect(speed).toBeCloseTo(beetle.stats.speed * BALANCE.night.rushMult, 1);
+  });
+});

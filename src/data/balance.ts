@@ -6,8 +6,9 @@ export const BALANCE = {
   /** Old lane stats (range/speed in lane units) convert to tiles with these factors. */
   units: { rangePerTile: 100, minMelee: 0.35, batSpeed: 2.5 / 100, enemySpeed: 1.6 / 100 },
   day: { startEnergy: 3, energyPerDay: 1, energyCap: 8, openingHand: 5, drawPerDay: 2, maxHand: 7 },
-  /** An enemy that reaches the cave hits once for atk × leakMult, then is gone (classic TD leak). */
-  night: { maxSeconds: 75, groupGap: 3, spawnGap: 0.7, leakMult: 4 },
+  /** An enemy that reaches the cave hits once for atk × leakMult, then is gone (classic TD leak).
+   *  Inside the roost zone with nothing blocking its column, an enemy rushes at speed × rushMult. */
+  night: { maxSeconds: 75, groupGap: 3, spawnGap: 0.7, leakMult: 4, rushMult: 3 },
   commander: { tax: 2 },
   knockback: { distance: 0.5, duration: 0.4 },
   adjacency: { atkPctPerNeighbour: 10, maxAtkPct: 30, vampireDawnHealPct: 20 },

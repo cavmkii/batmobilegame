@@ -75,7 +75,8 @@ export interface BatDef {
   /** Per-bat combat stats. Range/speed are in old lane units (100 = 1 tile). */
   stats: Stats;
   /** The roost this card places: its HP, how many nights it lasts, bats released per night. */
-  roost: { hp: number; nights: number; count: number };
+  /** respawn: seconds for the roost to replace one fallen bat during the night. */
+  roost: { hp: number; nights: number; count: number; respawn: number };
   traits: Trait[];
   evolved: { name: string; trait?: Trait };
   talents: [Talent, Talent];

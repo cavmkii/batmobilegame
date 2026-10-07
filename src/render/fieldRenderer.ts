@@ -139,6 +139,15 @@ export class FieldRenderer {
       g.fillStyle = CLANS[c].color;
       g.fillRect(x0 + 2 + i * 5, y0 + h - 6, 4, 4);
     });
+    // Refill progress toward the next bat (night only).
+    if (this.d.phase === 'night' && r.respawnTimer > 0) {
+      const p = Math.min(1, r.respawnTimer / r.bp.roost.respawn);
+      g.strokeStyle = '#9ab8ff';
+      g.lineWidth = 2;
+      g.beginPath();
+      g.arc(sx, sy, 9, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2);
+      g.stroke();
+    }
     // HP bar
     const pct = Math.max(0, r.hp / r.maxHp);
     g.fillStyle = '#000';

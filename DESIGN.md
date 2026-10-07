@@ -41,14 +41,16 @@ Above the cave is a 5×3 grid of roost tiles.
 - **Hand** stays between days, MTG-style. You draw 5 at the start of a level and 2 each
   day, with a hand limit of 7. When the deck runs out, the discard pile is shuffled in.
 - **Bat cards place roosts.** A roost has HP, lasts a set number of nights (stamina),
-  and releases a fixed number of bats each night. Bats that die come back the next
-  night as long as the roost stands.
+  and keeps a fixed number of bats out. During the night it replaces fallen bats one
+  at a time on a cooldown that depends on the bat type: Little Brown Bats every 3 s,
+  a Hammer-headed Bat every 14 s, commanders every 14–16 s.
 - **Bats can only be placed during the day** (like MTG's sorcery speed).
 
 **Night (automatic, about 20–40 s).**
 - Bats fly out, chase the nearest enemy, fight, and return home.
 - Enemies walk straight down their column. They attack bats within reach, then any
-  roost blocking their column, then the cave.
+  roost blocking their column, then the cave. Once an enemy is inside the roost zone
+  with nothing left blocking its column, it rushes the cave at 3× speed.
 - **Spells are instants.** Unspent day energy carries into the night, so you choose
   between spending it on roosts and keeping it for a night-time answer. Only the
   heal spell does anything during the day.

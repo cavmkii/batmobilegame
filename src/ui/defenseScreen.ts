@@ -81,7 +81,7 @@ registerScreen('battle', (app) => {
       const bp = c === 'cmd' ? d.commander.bp : blueprint(c.id, app.profile.roster[c.id], c.upgraded);
       const nights = c === 'cmd' ? 'stays until destroyed' : `${bp.roost.nights} nights`;
       const traits = bp.traits.map(describeTrait).join(', ');
-      return `${bp.name}: roost ❤${bp.roost.hp}, ${nights}, releases ${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''} (❤${bp.stats.hp} ⚔${bp.stats.atk})${traits ? ' · ' + traits : ''}. Tap a tile.`;
+      return `${bp.name}: roost ❤${bp.roost.hp}, ${nights}. Keeps ${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''} out (❤${bp.stats.hp} ⚔${bp.stats.atk}), replacing one every ${bp.roost.respawn}s${traits ? ' · ' + traits : ''}. Tap a tile.`;
     }
     const s = SPELL_BY_ID[c.id];
     return `${s.name}: ${s.desc}${c.upgraded ? ' (+40%)' : ''} ${d.canCast(sel as number) ? 'Tap again to cast.' : d.phase === 'day' ? 'Hold it for the night.' : 'Not enough energy.'}`;
@@ -105,9 +105,13 @@ registerScreen('battle', (app) => {
   };
 
   canvas.addEventListener('pointerdown', (e) => {
+    // The canvas uses object-fit: contain, so the drawn field can be letterboxed inside the element.
     const rect = canvas.getBoundingClientRect();
-    const px = ((e.clientX - rect.left) / rect.width) * VIEW_W;
-    const py = ((e.clientY - rect.top) / rect.height) * VIEW_H;
+    const scale = Math.min(rect.width / VIEW_W, rect.height / VIEW_H);
+    const offX = (rect.width - VIEW_W * scale) / 2;
+    const offY = (rect.height - VIEW_H * scale) / 2;
+    const px = (e.clientX - rect.left - offX) / scale;
+    const py = (e.clientY - rect.top - offY) / scale;
     const slot = renderer.slotAt(px, py);
     if (slot < 0) return;
     if (sel !== null && selectedBat() && d.canPlace(sel, slot)) {
@@ -119,7 +123,7 @@ registerScreen('battle', (app) => {
     const s = d.slots[slot];
     if (s.roost) {
       const bp = s.roost.bp;
-      note = `${bp.name}: roost ❤${Math.round(s.roost.hp)}/${s.roost.maxHp}, ${s.roost.card ? `${s.roost.nightsLeft} night${s.roost.nightsLeft > 1 ? 's' : ''} left` : 'commander'}, ${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''}.`;
+      note = `${bp.name}: roost ❤${Math.round(s.roost.hp)}/${s.roost.maxHp}, ${s.roost.card ? `${s.roost.nightsLeft} night${s.roost.nightsLeft > 1 ? 's' : ''} left` : 'commander'}, keeps ${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''} out, +1 every ${bp.roost.respawn}s.`;
     } else if (s.terrain) {
       const t = TERRAIN[s.terrain];
       note = `${t.icon} ${t.name}: ${t.desc} ${t.basis}`;

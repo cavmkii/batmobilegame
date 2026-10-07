@@ -122,7 +122,7 @@ registerScreen('bat', (app, s) => {
       h('tr', h('td', 'Attack'), h('td', fmt(bp.stats.atk)), h('td', 'Range'), h('td', bp.stats.range)),
       h('tr', h('td', 'Rate'), h('td', `${bp.stats.rate}s`), h('td', 'Speed'), h('td', Math.round(bp.stats.speed))),
       h('tr', h('td', 'Roost HP'), h('td', fmt(bp.roost.hp)), h('td', 'Bats / night'), h('td', bp.roost.count)),
-      h('tr', h('td', 'Lasts'), h('td', def.commander ? 'until destroyed' : `${bp.roost.nights} nights`), h('td'), h('td')),
+      h('tr', h('td', 'Lasts'), h('td', def.commander ? 'until destroyed' : `${bp.roost.nights} nights`), h('td', 'Refill'), h('td', `${bp.roost.respawn}s`)),
     ),
     bp.traits.length ? h('ul.traits', ...bp.traits.map((t) => h('li', describeTrait(t)))) : null,
     h('p.fact', '🦇 ', def.fact),
