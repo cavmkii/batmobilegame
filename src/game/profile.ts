@@ -1,4 +1,5 @@
 import { BAT_BY_ID, STARTER_COMMONS } from '../data/bats';
+import { RELIC_BY_ID } from '../data/relics';
 import { BALANCE } from '../data/balance';
 import { newOwnedBat, type OwnedBat } from './progression';
 import type { RunState } from './run';
@@ -51,6 +52,8 @@ export function loadProfile(): Profile {
     // Drop bats removed from the data set since the save was written.
     for (const id of Object.keys(p.roster)) if (!BAT_BY_ID[id]) delete p.roster[id];
     p.pendingDupes = (p.pendingDupes ?? []).filter((id) => BAT_BY_ID[id]);
+    // Relics can be renamed or removed between versions.
+    if (p.run) p.run.relics = p.run.relics.filter((id) => RELIC_BY_ID[id]);
     return p;
   } catch {
     return newProfile();

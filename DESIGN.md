@@ -1,8 +1,13 @@
-# Batmobile — Game Design (prototype v0.1)
+# Batmobile — Game Design (v0.2: Roost Defense)
 
-A mobile collect-and-upgrade game in the Battle Cats mould, crossed with a
-deckbuilder roguelite. You collect bats, level them permanently, and take a
-commander-led deck into runs across a branching map of real-time lane battles.
+A mobile collect-and-upgrade game crossed with a deckbuilder roguelite. You collect
+bats, level them permanently, and take a commander-led deck into runs. Each fight is
+a **day/night defense**: by day you build roosts from your hand, by night the bats fly
+out and fight on their own while you hold spells as instants.
+
+v0.1 was a Battle Cats–style real-time lane battler. v0.2 replaces the battle with
+the day/night defense, to get away from being a Battle Cats clone and to make the deck
+the source of round-to-round variety. The meta loop (roster, gacha, run map) is unchanged.
 
 Numbers below are starting values. All of them live in `src/data/` and
 `src/data/balance.ts` so they can be tuned without touching logic.
@@ -19,22 +24,67 @@ Numbers below are starting values. All of them live in `src/data/` and
 The roster decides *what you can field and how strong it is*. The run decides
 *what this particular deck turns into*.
 
-## 2. Battle
+## 2. A level: day / night defense
 
-- One horizontal lane. Your cave is on the right, the enemy roost on the left.
-  Destroy the roost to win; lose your cave and the run ends.
-- **Energy** regenerates continuously (base 0.8/s, cap 10).
-- **Hand of 4.** Playing a card sends it to the bottom of your draw pile and
-  draws the next. No cooldowns: the rotation *is* the cooldown.
-- **Commander slot** sits beside the hand and is always available. Only one
-  commander can be on the field. Each time it dies, its cost rises by +2
+Portrait field: enemies come in from the top, and your cave sits along the bottom.
+Above the cave is a 5×3 grid of roost tiles.
+
+- **Nights.** Each level has 3–5 nights, more for elites and the boss. Survive the
+  last night to win. Cave HP carries over through the run.
+- **Each night's wave is announced during the day:** which enemies, how many, and
+  which columns they come down. The waves come from a threat budget that grows each
+  night. The boss and elite levels add a fixed finale enemy.
+
+**Day (planning, no clock).**
+- **Energy** starts at 3 on day 1 and goes up by 1 each day, to a cap of 8. It resets
+  each level, Hearthstone-style, so there are no land cards.
+- **Hand** stays between days, MTG-style. You draw 5 at the start of a level and 2 each
+  day, with a hand limit of 7. When the deck runs out, the discard pile is shuffled in.
+- **Bat cards place roosts.** A roost has HP, lasts a set number of nights (stamina),
+  and releases a fixed number of bats each night. Bats that die come back the next
+  night as long as the roost stands.
+- **Bats can only be placed during the day** (like MTG's sorcery speed).
+
+**Night (automatic, about 20–40 s).**
+- Bats fly out, chase the nearest enemy, fight, and return home.
+- Enemies walk straight down their column. They attack bats within reach, then any
+  roost blocking their column, then the cave.
+- **Spells are instants.** Unspent day energy carries into the night, so you choose
+  between spending it on roosts and keeping it for a night-time answer. Only the
+  heal spell does anything during the day.
+- **Leaks.** An enemy that reaches the cave hits once for 4× its attack and then is
+  gone. (An earlier version had enemies keep attacking the cave; one weak first
+  night could then lose the whole run.)
+
+**Dawn.**
+- Surviving bats go home and every roost loses one night of stamina.
+- An expired or destroyed roost sends its card to the discard pile.
+
+**Commander.**
+- The commander is a roost card in the command zone: playable any day, and it
+  never expires.
+- If it's destroyed, it goes back to the command zone and costs +2 more each time
   (commander tax).
-- Units walk forward, stop at the first enemy in range, and attack on a timer.
-  Each unit has N **knockbacks**: crossing each 1/N HP threshold pushes it back
-  and interrupts it, as in Battle Cats.
-- Cave HP carries between battles within a run (Slay the Spire–style HP).
-- Some enemy waves are triggered by the roost's HP dropping below a threshold,
-  so pushing too fast wakes the heavies.
+
+**Positioning.**
+- **Terrain tiles.** Each level has 3–4 terrain tiles. A roost on its own clan's
+  terrain gets a bonus, based on where those bats really feed:
+
+  | Terrain | Clan | Bonus | Real basis |
+  |---|---|---|---|
+  | Pond | Piscivore | +40% attack | Fishing bats hunt over water |
+  | Fig tree | Frugivore | +50% roost HP, +30% bat HP | Staple food and roost |
+  | Flowering cactus | Nectarivore | Auras ×1.5 | Columnar cacti are bat-pollinated |
+  | Street lamp | Insectivore | +35% attack speed | Lights concentrate insects |
+  | Cattle pen | Sanguivore | +25% lifesteal | Common vampire bats feed mostly on livestock |
+
+- **Colony adjacency.** A roost gets +10% attack for each orthogonal neighbour that
+  shares a clan, up to +30%. Vampire roosts heal neighbouring roosts 20% at dawn.
+- **Column blocking.** Enemies only attack a roost in their own column. Roosts placed
+  in the columns tonight's enemies use act as walls.
+
+**Enemy note.** Tiger moths jam bat sonar with ultrasonic clicks, which is real
+(Arctiinae). In the game they shrink the range of nearby bats.
 
 ## 3. Deck construction — Commander rules
 
@@ -45,7 +95,8 @@ The roster decides *what you can field and how strong it is*. The run decides
   basic bat. Fledglings play the role of basic lands: unlimited copies, and
   they pad the starting deck.
 - **Core.** Before a run, pick up to 8 *owned* bats legal for the commander.
-  The starting deck is the core plus Fledglings up to 8 cards.
+  The starting deck is the core plus Fledglings up to 8 cards. Fledglings are the
+  weakest roost per energy on purpose: basics shouldn't beat drafted cards.
 - **Cap.** 20 cards. Taking a card at the cap means removing one.
 - **Draft offers** follow the commander's identity. Offers can include bats you
   don't own; those fight at level 1. Owned bats use their roster level. So the
@@ -67,7 +118,7 @@ feed; that's where the Sanguivore heal-on-death mechanic comes from.
 Starter commanders: **Great Flying Fox** (Frugivore/Nectarivore), **Ghost Bat**
 (Sanguivore/Insectivore), **Spectral Bat** (Piscivore/Sanguivore).
 
-## 5. Run structure
+## 5. Run structure (unchanged from v0.1; battle nodes are now defense levels)
 
 - One act (designed for three later): 8 rows of nodes, branching paths.
   - Row 0: battles. Rows 1–5: mixed. Row 6: rest. Row 7: boss.
@@ -104,37 +155,43 @@ everything accrued. Beating the boss grants a large completion bonus.
 
 ## 9. Known tensions / to watch in playtest
 
-1. **Singleton + real-time.** With a 4-card hand, a 20-card deck takes
-   about 16 plays to cycle. Battle length and energy rate need tuning so a
-   deck cycles at least once per fight.
-2. **Gacha-only acquisition.** With commander rules, off-identity pulls are
-   worth less. Dupe→XP and pity keep this from feeling bad. Watch whether
-   players feel locked into one commander.
-3. **Two currencies are spent on the roster.** Levelling (XP) and pulling
-   (Glowbugs) don't compete with each other. If that turns out too frictionless,
-   evolution could also cost Glowbugs.
+1. **Decisions per day.** Ramping energy, a kept hand, and multi-night roosts may
+   add up to too few real choices on some days ("place whatever I drew") or too
+   many. Only human play will show this.
+2. **Hand clogging.** The hand limit is 7 and draws stop at the limit. If spells pile
+   up, you stop drawing roosts. MTG would make you discard down to the limit; that
+   rule isn't in yet.
+3. **Commander strength.** Ghost Bat (fast, area damage, lifesteal) clearly
+   outperforms Flying Fox (a slow tank) in bot runs. The bot can't judge aura or
+   positioning value, so a person needs to check this.
+4. **Gacha-only acquisition.** With commander rules, off-identity pulls are worth less.
+   Dupe→XP and pity soften this.
+5. **XP and Glowbugs** don't compete with each other. That may be too frictionless.
 
-## 10. Balance status (bot playtests, v0.1)
+## 10. Balance status (bot playtests, v0.2)
 
-`tests/battle.test.ts` includes a bot that saves energy for the commander, then plays the
-priciest affordable card. It's a crude player, so treat these as relative numbers only.
+`tests/defense.test.ts` includes a bot that places its commander first, then roosts in
+the columns tonight's enemies will use, preferring terrain and same-clan neighbours.
+It holds energy for a night spell and casts damage spells when enemies get close.
+Each cell is 8 seeds.
 
-- **Starter decks (level 1, no drafts)** win row 0–1 battles reliably (~45–80 s), are
-  inconsistent against elites, and never beat the boss.
-- **Mid-run deck (starter + 6 drafts), boss fight:** 0/6 at roster level 1, 6/6 at level 5.
-  The intended pacing is that the first clear comes after a few runs of levelling, the
-  Battle Cats grind wall.
-- An early pass had the commander soloing fights in 30–60 s, so the deck barely cycled.
-  Commander stats were cut and roost HP raised to fix that. Keep an eye on this: if the
-  commander carries, the deckbuilding stops mattering.
-- Untested so far: whether a skilled human cycles a 20-card deck at least once per fight.
+- **Starter decks at roster level 1** win row 0–2 levels with little cave damage. The
+  elite Owl Loft is a coin flip. The boss is 0/8.
+- **Drafted deck (starter + 6 drafts)** at level 5 wins almost everything, and the boss
+  6/8. So the first clear comes after a few runs of levelling.
+- **Findings that changed the numbers:**
+  - Continuous cave damage ended runs on night 1, so leaks became a single hit.
+  - Fledglings at 2 bats for 1 energy were the best value per energy in the game,
+    so drafting made decks worse. Now they release 1 bat.
+  - 2-energy spells lost to 2-energy roosts that last 3–4 nights, so holding energy
+    for spells was a losing play. Most spells now cost 1, with stronger effects.
 
 ## 11. Tech
 
-- TypeScript + Vite. DOM for menus, Canvas 2D for battle. No engine.
+- TypeScript + Vite. DOM for menus, Canvas 2D for the defense field. No engine.
 - Pixel art is generated from hand-authored character grids in
   `src/data/sprites.ts` (bats are authored as a left half and mirrored).
   Each sprite is standalone data, so real art can replace it later.
 - Saves go to `localStorage`, with a version field for migrations.
-- Pure logic (battle sim, gacha, deck rules, map gen, progression) is
+- Pure logic (defense sim in `src/game/defense.ts`, gacha, deck rules, map gen, progression) is
   framework-free and unit-tested with Vitest.

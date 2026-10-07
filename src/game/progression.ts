@@ -37,6 +37,7 @@ export interface UnitBlueprint {
   cost: number;
   stats: Stats;
   traits: Trait[];
+  roost: { hp: number; nights: number; count: number };
 }
 
 /**
@@ -73,6 +74,7 @@ export function blueprint(batId: string, owned: OwnedBat | undefined, upgradedCa
   }
 
   const s = def.stats;
+  const swarm = traits.find((t) => t.kind === 'swarm');
   return {
     batId,
     name: displayName(def, owned),
@@ -83,7 +85,12 @@ export function blueprint(batId: string, owned: OwnedBat | undefined, upgradedCa
       atk: Math.round(s.atk * atkMult),
       speed: s.speed * speedMult,
     },
-    traits,
+    traits: traits.filter((t) => t.kind !== 'swarm'),
+    roost: {
+      hp: Math.round(def.roost.hp * hpMult),
+      nights: def.roost.nights,
+      count: swarm && swarm.kind === 'swarm' ? swarm.count : def.roost.count,
+    },
   };
 }
 
@@ -99,11 +106,12 @@ export function describeTrait(t: Trait): string {
     case 'lifesteal': return `Lifesteal ${t.pct}%`;
     case 'multiHit': return `Hits ${t.targets} targets`;
     case 'aoe': return 'Area attack';
-    case 'healAura': return `Heals nearby ${t.amount} / ${t.every}s`;
+    case 'healAura': return `Heals nearby bats ${t.amount} / ${t.every}s`;
     case 'atkAura': return `Nearby bats +${t.pct}% attack`;
     case 'hasteAura': return `Nearby bats +${t.pct}% attack speed`;
     case 'knockChance': return `${Math.round(t.chance * 100)}% knockback on hit`;
     case 'deathHeal': return `On death: heal nearby ${t.amount}`;
-    case 'swarm': return `Spawns ${t.count}`;
+    case 'swarm': return `Roost releases ${t.count} bats`;
+    case 'jammer': return `Jams sonar: nearby bats -${t.pct}% range`;
   }
 }

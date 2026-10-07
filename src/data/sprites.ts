@@ -169,6 +169,20 @@ export const ENEMY_SPRITES: Record<string, EnemySprite> = {
       '.....oo.....',
     ],
   },
+  // Tiger moths (Arctiinae) answer bat calls with ultrasonic clicks that can jam sonar.
+  tigerMoth: {
+    palette: { o: '#1a0c08', w: '#f0a030', W: '#1a1010', b: '#c03020', e: '#ffffff' },
+    grid: [
+      '...o....o...',
+      '....o..o....',
+      '.WwW.oo.WwW.',
+      'wWwWwbbwWwWw',
+      'WwWwwbbwwWwW',
+      '.wWwobbowWw.',
+      '..wW.bb.Ww..',
+      '.....oo.....',
+    ],
+  },
   beetle: {
     palette: { o: '#100c08', B: '#3a2a50', b: '#5a4478', h: '#8a74b0', l: '#22180c', e: '#c0c040' },
     grid: [
