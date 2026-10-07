@@ -195,19 +195,29 @@ describe('roost levels', () => {
 });
 
 describe('defense rules', () => {
-  it('charges commander tax after the commander roost is destroyed', () => {
-    const d = new Defense(cfg());
-    const base = d.commanderCost();
+  it('a destroyed roost stops blocking for the night and is rebuilt at dawn at the same level', () => {
+    const d = new Defense(cfg({ caveHp: 1e9, caveMax: 1e9 }));
     d.guano = 99;
     expect(d.place('cmd', 2)).toBe(true);
-    d.slots[2].roost!.hp = 1;
+    const r = d.slots[2].roost!;
+    r.level = 4;
+    r.hp = 1;
     d.endDay();
     for (const u of d.units) u.dead = true; // ground the commander's bats so the cat reaches the roost
     (d as unknown as { spawnEnemy(id: string, x: number): void }).spawnEnemy('cat', 2.5);
     d.units[d.units.length - 1].y = 5.5;
-    for (let i = 0; i < 60 * 10 && d.slots[2].roost; i++) d.step(1 / 60);
-    expect(d.slots[2].roost).toBeNull();
-    expect(d.commanderCost()).toBe(base + 2);
+    for (let i = 0; i < 60 * 10 && !r.ruined; i++) d.step(1 / 60);
+    expect(r.ruined).toBe(true);
+    // Wrecked: no replacement bats tonight.
+    for (let i = 0; i < 60 * 20; i++) d.step(1 / 60);
+    expect(d.units.some((u) => u.side === 'bat' && u.home === 2)).toBe(false);
+    for (let i = 0; i < 60 * 120 && d.phase === 'night'; i++) d.step(1 / 60);
+    expect(d.phase).toBe('day');
+    expect(d.slots[2].roost).toBe(r);
+    expect(r.ruined).toBe(false);
+    expect(r.level).toBe(4);
+    expect(r.hp).toBe(Math.round((r.maxHp * BALANCE.rebuildHpPct) / 100));
+    expect(d.commander.inPlay).toBe(true);
   });
 
   it('gives terrain bonuses only to the matching clan', () => {

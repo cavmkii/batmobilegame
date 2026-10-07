@@ -144,7 +144,7 @@ registerScreen('battle', (app) => {
     const s = d.slots[slot];
     if (s.roost) {
       const ro = s.roost;
-      note = `${ro.bp.name} roost, level ${ro.level}${d.isMega(ro) ? ' (mega)' : ''}: ❤${Math.round(ro.hp)}/${ro.maxHp}, ${d.isMega(ro) ? 'one giant bat' : `${ro.bp.roost.count} bats`}, +1 every ${d.respawnTime(ro)}s.`;
+      note = ro.ruined ? `${ro.bp.name} roost is wrecked. It will be rebuilt at dawn (level ${ro.level}, half HP).` : `${ro.bp.name} roost, level ${ro.level}${d.isMega(ro) ? ' (mega)' : ''}: ❤${Math.round(ro.hp)}/${ro.maxHp}, ${d.isMega(ro) ? 'one giant bat' : `${ro.bp.roost.count} bats`}, +1 every ${d.respawnTime(ro)}s.`;
     } else if (s.terrain) {
       const t = TERRAIN[s.terrain];
       note = `${t.icon} ${t.name}: ${t.desc} ${t.basis}`;
@@ -160,7 +160,8 @@ registerScreen('battle', (app) => {
     const cost = isCmd ? d.commanderCost() : d.cardCost(o.card!);
     const name = kind === 'bat' ? BAT_BY_ID[id].name : SPELL_BY_ID[id].name;
     const clans = kind === 'bat' ? BAT_BY_ID[id].clans : SPELL_BY_ID[id].clans;
-    const cls = ['hand-card', isCmd ? 'commander' : '', same(sel, o.sel) ? 'selected' : '', o.playable ? '' : 'disabled', kind === 'spell' ? 'spell' : ''].filter(Boolean).join('.');
+    const urge = isCmd && d.phase === 'day' && !d.commander.inPlay && d.guano >= d.commanderCost();
+    const cls = ['hand-card', isCmd ? 'commander' : '', urge ? 'urge' : '', same(sel, o.sel) ? 'selected' : '', o.playable ? '' : 'disabled', kind === 'spell' ? 'spell' : ''].filter(Boolean).join('.');
     return h(`button.${cls}`, {
       style: `--rarity:${isCmd ? 'var(--accent)' : RARITY_COLOR[rarityOf(o.card!)]}`,
       onpointerdown: (e: PointerEvent) => { e.preventDefault(); o.onTap(); },
@@ -183,7 +184,7 @@ registerScreen('battle', (app) => {
     caveText.textContent = `${Math.max(0, Math.round(d.cave.hp))}`;
     endBtn.style.display = isDay ? '' : 'none';
     speedBtn.style.display = isDay ? 'none' : '';
-    const k = [d.phase, d.day, d.guano, JSON.stringify(sel), d.commander.inPlay, d.commander.deaths,
+    const k = [d.phase, d.day, d.guano, JSON.stringify(sel), d.commander.inPlay,
       d.pool.map((c) => c?.uid ?? '-').join(','), d.spells.map((c) => c.uid).join(','), note,
       d.slots.map((s) => s.roost?.level ?? 0).join('.')].join('|');
     if (k === key) return;
@@ -200,7 +201,7 @@ registerScreen('battle', (app) => {
       cardEl({
         card: null, isCmd: true, sel: { kind: 'cmd' }, playable: cmdPlayable,
         onTap: () => { sel = same(sel, { kind: 'cmd' }) ? null : { kind: 'cmd' }; note = ''; },
-        tag: d.commander.inPlay ? 'in play' : d.commander.deaths ? `tax +${d.commander.deaths * d.commander.taxStep}` : 'command',
+        tag: d.commander.inPlay ? 'in play' : 'place me',
       }),
       h('div.row-label', 'pool'),
       ...d.pool.map((c, i) => cardEl({
@@ -229,7 +230,7 @@ registerScreen('battle', (app) => {
     if (!text) {
       text = isDay
         ? d.day === 1
-          ? `Tonight's enemies are shown at the top. Place a bat from the pool, or stack a copy on its roost to level it up. A used card leaves its slot empty: ↻ rerolls the pool for ${d.refreshCost} guano, and dawn refills empty slots.`
+          ? `Tonight's enemies are shown at the top. Start with your commander (gold card), placed in a column they'll come down. Then place pool bats, or stack a copy onto its roost to level it. ↻ rerolls the pool for ${d.refreshCost} guano; dawn refills empty slots.`
           : `Dawn: +${d.lastIncome} guano. Tonight: ${tonightSummary(d)}.`
         : 'Bats fly out on their own. Spells are instants: tap one twice to cast.';
     }

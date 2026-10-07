@@ -35,6 +35,8 @@ export interface Roost {
   maxHp: number;
   /** Seconds accumulated toward replacing a fallen bat (night only). */
   respawnTimer: number;
+  /** Destroyed tonight: no bats, doesn't block. Rebuilt at dawn. */
+  ruined: boolean;
 }
 
 export interface Slot {
@@ -120,7 +122,7 @@ export class Defense {
   floats: FloatText[] = [];
   effects: Effect[] = [];
   cave: { hp: number; max: number };
-  commander: { bp: UnitBlueprint; deaths: number; inPlay: boolean; taxStep: number };
+  commander: { bp: UnitBlueprint; inPlay: boolean; discount: number };
   /** Enemies killed this night (feeds the dawn guano bonus). */
   kills = 0;
   /** Guano earned at the last dawn, for the UI. */
@@ -144,19 +146,18 @@ export class Defense {
     this.enemyMult = 1 + BALANCE.enemyRowScaling * cfg.row;
     this.cave = { hp: cfg.caveHp, max: cfg.caveMax };
 
-    let taxStep = BALANCE.commander.tax;
+    let discount = 0;
     for (const id of cfg.relics) {
       const e = RELIC_BY_ID[id]?.effect;
       if (!e) continue;
-      if (e.kind === 'commanderTax') taxStep += e.delta;
+      if (e.kind === 'commanderDiscount') discount += e.amount;
       else if (e.kind === 'speedPct' || e.kind === 'hpPct' || e.kind === 'atkPct') this.relic[e.kind] += e.pct;
       else if (e.kind !== 'healAfterBattle') this.relic[e.kind] += e.amount;
     }
     this.commander = {
       bp: blueprint(cfg.commanderId, cfg.roster[cfg.commanderId]),
-      deaths: 0,
       inPlay: false,
-      taxStep: Math.max(0, taxStep),
+      discount,
     };
 
     this.slots = this.makeSlots();
@@ -182,7 +183,7 @@ export class Defense {
   }
 
   commanderCost(): number {
-    return this.commander.bp.cost + this.commander.deaths * this.commander.taxStep;
+    return Math.max(1, this.commander.bp.cost - this.commander.discount);
   }
 
   /** Can the card at `src` go on this tile: an empty tile, or a same-type roost below max level. */
@@ -298,6 +299,7 @@ export class Defense {
       const r = slot.roost;
       if (!r) continue;
       r.respawnTimer = 0;
+      if (r.ruined) continue;
       const n = this.batsPerRoost(r);
       for (let k = 0; k < n; k++) this.spawnBat(slot, slot.x + (k - (n - 1) / 2) * 0.18, slot.y - 0.3);
     }
@@ -411,7 +413,7 @@ export class Defense {
   }
 
   private newRoost(slot: Slot, bp: UnitBlueprint, isCommander: boolean) {
-    slot.roost = { batId: bp.batId, isCommander, bp, level: 1, hp: 0, maxHp: 0, respawnTimer: 0 };
+    slot.roost = { batId: bp.batId, isCommander, bp, level: 1, hp: 0, maxHp: 0, respawnTimer: 0, ruined: false };
     slot.roost.maxHp = this.roostMaxHp(slot);
     slot.roost.hp = slot.roost.maxHp;
     if (this.relic.startLevel) this.levelUp(slot, this.relic.startLevel, false);
@@ -448,7 +450,7 @@ export class Defense {
   private respawnBats(dt: number) {
     for (const slot of this.slots) {
       const r = slot.roost;
-      if (!r) continue;
+      if (!r || r.ruined) continue;
       const out = this.units.filter((u) => u.side === 'bat' && !u.dead && u.home === slot.idx).length;
       if (out >= this.batsPerRoost(r)) {
         r.respawnTimer = 0;
@@ -482,12 +484,20 @@ export class Defense {
     for (const u of this.units) if (u.side === 'bat') u.dead = true;
     this.units = [];
     this.spawnQueue = [];
+    // Roosts wrecked in the night are rebuilt by morning, at the same level.
+    for (const slot of this.slots) {
+      const r = slot.roost;
+      if (!r?.ruined) continue;
+      r.ruined = false;
+      r.hp = Math.round((r.maxHp * BALANCE.rebuildHpPct) / 100);
+      this.effects.push({ kind: 'place', x: slot.x, y: slot.y, r: 0.6, t: this.clock });
+    }
     for (const slot of this.slots) {
       const r = slot.roost;
       if (!r || !BAT_BY_ID[r.batId].clans.includes('SAN')) continue;
       // Vampire bats regurgitate blood for hungry roost-mates.
       for (const n of this.neighbours(slot)) {
-        if (n.roost) n.roost.hp = Math.min(n.roost.maxHp, n.roost.hp + (n.roost.maxHp * BALANCE.adjacency.vampireDawnHealPct) / 100);
+        if (n.roost && !n.roost.ruined) n.roost.hp = Math.min(n.roost.maxHp, n.roost.hp + (n.roost.maxHp * BALANCE.adjacency.vampireDawnHealPct) / 100);
       }
     }
     if (this.day >= this.nights) {
@@ -501,13 +511,12 @@ export class Defense {
     this.phase = 'day';
   }
 
-  private removeRoost(slot: Slot) {
+  /** A roost at 0 HP is wrecked for the rest of the night; dawn rebuilds it. */
+  private ruinRoost(slot: Slot) {
     const r = slot.roost!;
-    slot.roost = null;
-    if (r.isCommander) {
-      this.commander.inPlay = false;
-      this.commander.deaths++;
-    }
+    r.ruined = true;
+    r.hp = 0;
+    r.respawnTimer = 0;
   }
 
   private batBlueprint(card: Card): UnitBlueprint {
@@ -692,7 +701,7 @@ export class Defense {
     let roostSlot: Slot | null = null;
     if (!bat) {
       for (const s of this.slots) {
-        if (!s.roost || Math.abs(s.x - u.x) > 0.5 || s.y < u.y) continue;
+        if (!s.roost || s.roost.ruined || Math.abs(s.x - u.x) > 0.5 || s.y < u.y) continue;
         if (s.y - 0.35 - u.y <= range && (!roostSlot || s.y < roostSlot.y)) roostSlot = s;
       }
     }
@@ -700,7 +709,7 @@ export class Defense {
     const atCave = !bat && !roostSlot && F.caveY - u.y <= range;
 
     if (!bat && !roostSlot && !atCave) {
-      const blocked = this.slots.some((s) => s.roost && Math.abs(s.x - u.x) <= 0.5 && s.y > u.y);
+      const blocked = this.slots.some((s) => s.roost && !s.roost.ruined && Math.abs(s.x - u.x) <= 0.5 && s.y > u.y);
       const rushing = !blocked && u.y >= F.roostTopY - 0.5;
       u.y += u.stats.speed * (rushing ? BALANCE.night.rushMult : 1) * dt;
       return;
@@ -718,7 +727,7 @@ export class Defense {
       this.floats.push({ x: roostSlot.x, y: roostSlot.y, text: `${Math.round(dmg)}`, color: '#ffb070', t: this.clock });
       if (r.hp <= 0) {
         this.effects.push({ kind: 'death', x: roostSlot.x, y: roostSlot.y, r: 0.6, t: this.clock });
-        this.removeRoost(roostSlot);
+        this.ruinRoost(roostSlot);
       }
       u.aimX = roostSlot.x;
       u.aimY = roostSlot.y;
@@ -835,7 +844,7 @@ export class Defense {
         break;
       case 'healAll':
         for (const u of this.units) if (u.side === 'bat' && !u.dead) this.heal(u, (u.maxHp * eff.pct * amt) / 100);
-        for (const s of this.slots) if (s.roost) s.roost.hp = Math.min(s.roost.maxHp, s.roost.hp + (s.roost.maxHp * eff.pct * amt) / 100);
+        for (const s of this.slots) if (s.roost && !s.roost.ruined) s.roost.hp = Math.min(s.roost.maxHp, s.roost.hp + (s.roost.maxHp * eff.pct * amt) / 100);
         this.cave.hp = Math.min(this.cave.max, this.cave.hp + eff.caveHeal * amt);
         this.effects.push({ kind: 'heal', x: 2.5, y: 7.5, r: 2.5, t: c });
         break;

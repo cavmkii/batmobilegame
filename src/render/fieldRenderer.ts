@@ -126,6 +126,21 @@ export class FieldRenderer {
     g.fillRect(x0 + 4, y0 + 6, w - 8, 1);
     // Roosting bats hang upside down by day; at night the tile shows an empty perch with a marker.
     const img = batSprite(r.batId, 0, 0.8);
+    if (r.ruined) {
+      // Wrecked: broken perch and rubble until dawn.
+      g.fillStyle = '#2a2030';
+      g.fillRect(x0 + 2, y0 + 2, w - 4, h - 4);
+      g.fillStyle = '#5a4a3a';
+      g.fillRect(x0 + 6, y0 + h - 12, 10, 5);
+      g.fillRect(x0 + 20, y0 + h - 9, 14, 4);
+      g.fillRect(x0 + w - 18, y0 + h - 13, 9, 6);
+      g.fillStyle = '#9a8ab0';
+      g.font = '9px monospace';
+      g.textAlign = 'center';
+      g.fillText('rebuilds', sx, y0 + 14);
+      g.fillText('at dawn', sx, y0 + 24);
+      return;
+    }
     if (this.d.phase !== 'night') {
       g.save();
       g.translate(sx, y0 + 9);

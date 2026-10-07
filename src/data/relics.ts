@@ -7,7 +7,7 @@ export const RELICS: RelicDef[] = [
   { id: 'silk_wings', name: 'Silk Wings', icon: '🪽', desc: 'Bats fly 20% faster.', effect: { kind: 'speedPct', pct: 20 } },
   { id: 'thick_fur', name: 'Winter Fur', icon: '🧥', desc: 'Bats and roosts have +15% HP.', effect: { kind: 'hpPct', pct: 15 } },
   { id: 'fangs', name: 'Whetted Fangs', icon: '🦷', desc: 'Bats deal +12% damage.', effect: { kind: 'atkPct', pct: 12 } },
-  { id: 'blood_pact', name: 'Blood Pact', icon: '🩸', desc: 'Commander tax is +1 instead of +2.', effect: { kind: 'commanderTax', delta: -1 } },
+  { id: 'blood_pact', name: 'Blood Pact', icon: '🩸', desc: 'Your commander costs 2 less.', effect: { kind: 'commanderDiscount', amount: 2 } },
   { id: 'fig_tree', name: 'Fig Tree', icon: '🌳', desc: 'Heal the cave 60 after each level.', effect: { kind: 'healAfterBattle', amount: 60 } },
   { id: 'old_growth', name: 'Old Growth', icon: '🪵', desc: 'New roosts start at level 2.', effect: { kind: 'startLevel', amount: 1 } },
 ];

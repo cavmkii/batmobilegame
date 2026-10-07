@@ -137,7 +137,7 @@ export type RelicEffect =
   | { kind: 'speedPct'; pct: number }
   | { kind: 'hpPct'; pct: number }
   | { kind: 'atkPct'; pct: number }
-  | { kind: 'commanderTax'; delta: number }
+  | { kind: 'commanderDiscount'; amount: number }
   | { kind: 'healAfterBattle'; amount: number }
   | { kind: 'startLevel'; amount: number };
 

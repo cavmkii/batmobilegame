@@ -22,7 +22,7 @@ export const BATS: BatDef[] = [
   // ---------- Basic ----------
   {
     id: 'fledgling', name: 'Fledgling', species: 'Juvenile bat', clans: [], rarity: 'common', basic: true,
-    cost: 1, pattern: [], roost: { hp: 80, count: 1, respawn: 7 }, stats: { hp: 60, atk: 10, range: 30, rate: 1.0, speed: 40, knockbacks: 2 }, traits: [],
+    cost: 1, pattern: [], roost: { hp: 80, count: 1, respawn: 3 }, stats: { hp: 60, atk: 10, range: 30, rate: 1.0, speed: 40, knockbacks: 2 }, traits: [],
     evolved: { name: 'Fledgling' }, talents: [hp(10), atk(10)],
     sprite: { template: 'fledgling', palette: pal('#8a8296', '#6b6478', '#5a5266', '#3e3848'), size: 0.8 },
     fact: 'Many small bats make their first flights at three to four weeks old.',

@@ -12,7 +12,8 @@ export const BALANCE = {
   /** An enemy that reaches the cave hits once for atk × leakMult, then is gone (classic TD leak).
    *  Inside the roost zone with nothing blocking its column, an enemy rushes at speed × rushMult. */
   night: { maxSeconds: 75, groupGap: 3, spawnGap: 0.7, leakMult: 4, rushMult: 3 },
-  commander: { tax: 2 },
+  /** A roost destroyed at night is rebuilt at dawn with this fraction of its max HP. */
+  rebuildHpPct: 50,
   knockback: { distance: 0.5, duration: 0.4 },
   adjacency: { vampireDawnHealPct: 20 },
   /** Stats gain this fraction of base per level above 1. */
