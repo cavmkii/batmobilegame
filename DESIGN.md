@@ -95,10 +95,13 @@ and it stops blocking its column. At dawn it's rebuilt at the same level with 50
 - **Leaks.** An enemy that reaches the cave hits once for 4× its attack, then is gone.
 
 **Commander.** The commander sits in the command zone and costs guano to place. It can't
-be stacked, but other roosts' patterns can raise its level. Like every roost it's
-rebuilt at dawn if wrecked, so v0.2's commander tax is gone. On day 1 the commander
-card pulses until you place it: in playtests, a player who skips it is the one most
-likely to lose the first level.
+be stacked, but other roosts' patterns can raise its level.
+- Unlike other roosts, a destroyed commander is **not** rebuilt at dawn. It goes back to
+  the command zone, and you can place it again on any day.
+- **Commander tax:** each placement costs +2 more than the one before (base, +2, +4…)
+  for the rest of the level, as in MTG. A re-placed commander starts at level 1.
+- On day 1 the commander card pulses until you place it. In playtests, a player who
+  skips it is the one most likely to lose the first level.
 
 **Positioning.**
 - **Terrain.** Each level has 3–4 terrain tiles. A roost on its own clan's terrain gets a

@@ -122,7 +122,8 @@ export class Defense {
   floats: FloatText[] = [];
   effects: Effect[] = [];
   cave: { hp: number; max: number };
-  commander: { bp: UnitBlueprint; inPlay: boolean; discount: number };
+  /** casts: how many times it has been put in play this level (drives commander tax). */
+  commander: { bp: UnitBlueprint; inPlay: boolean; casts: number; discount: number };
   /** Enemies killed this night (feeds the dawn guano bonus). */
   kills = 0;
   /** Guano earned at the last dawn, for the UI. */
@@ -157,6 +158,7 @@ export class Defense {
     this.commander = {
       bp: blueprint(cfg.commanderId, cfg.roster[cfg.commanderId]),
       inPlay: false,
+      casts: 0,
       discount,
     };
 
@@ -182,8 +184,9 @@ export class Defense {
     return card.kind === 'bat' ? this.batBlueprint(card).cost : SPELL_BY_ID[card.id].cost;
   }
 
+  /** Base cost, plus commander tax for every earlier placement this level. */
   commanderCost(): number {
-    return Math.max(1, this.commander.bp.cost - this.commander.discount);
+    return Math.max(1, this.commander.bp.cost - this.commander.discount) + this.commander.casts * BALANCE.commander.tax;
   }
 
   /** Can the card at `src` go on this tile: an empty tile, or a same-type roost below max level. */
@@ -244,6 +247,7 @@ export class Defense {
     if (src === 'cmd') {
       this.guano -= this.commanderCost();
       this.commander.inPlay = true;
+      this.commander.casts++;
       this.newRoost(slot, this.commander.bp, true);
       return true;
     }
@@ -511,9 +515,18 @@ export class Defense {
     this.phase = 'day';
   }
 
-  /** A roost at 0 HP is wrecked for the rest of the night; dawn rebuilds it. */
+  /**
+   * A roost at 0 HP is wrecked for the rest of the night; dawn rebuilds it.
+   * The commander is the exception: it goes back to the command zone to be placed again (with tax).
+   */
   private ruinRoost(slot: Slot) {
     const r = slot.roost!;
+    if (r.isCommander) {
+      slot.roost = null;
+      this.commander.inPlay = false;
+      this.floats.push({ x: slot.x, y: slot.y, text: 'to command zone', color: '#ffc23d', t: this.clock });
+      return;
+    }
     r.ruined = true;
     r.hp = 0;
     r.respawnTimer = 0;

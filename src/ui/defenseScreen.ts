@@ -94,7 +94,7 @@ registerScreen('battle', (app) => {
     const traits = bp.traits.map(describeTrait).join(', ');
     const stackable = d.slots.some((s) => s.roost && d.canStackOn(s, batId));
     return `${bp.name}: roost ❤${bp.roost.hp}, keeps ${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''} out (❤${bp.stats.hp} ⚔${bp.stats.atk}), +1 every ${bp.roost.respawn}s${traits ? ' · ' + traits : ''}. `
-      + (isCmd ? 'Tap an empty tile.' : stackable ? 'Tap its roost (blue) to level it and its pattern, or an empty tile.' : 'Tap a tile.');
+      + (isCmd ? `Tap an empty tile.${d.commander.casts ? ` Commander tax: +${d.commander.casts * BALANCE.commander.tax} for ${d.commander.casts} earlier placement${d.commander.casts > 1 ? 's' : ''}.` : ' If destroyed it returns here, costing 2 more each time.'}` : stackable ? 'Tap its roost (blue) to level it and its pattern, or an empty tile.' : 'Tap a tile.');
   };
 
   const onPool = (i: number) => {
@@ -184,7 +184,7 @@ registerScreen('battle', (app) => {
     caveText.textContent = `${Math.max(0, Math.round(d.cave.hp))}`;
     endBtn.style.display = isDay ? '' : 'none';
     speedBtn.style.display = isDay ? 'none' : '';
-    const k = [d.phase, d.day, d.guano, JSON.stringify(sel), d.commander.inPlay,
+    const k = [d.phase, d.day, d.guano, JSON.stringify(sel), d.commander.inPlay, d.commander.casts,
       d.pool.map((c) => c?.uid ?? '-').join(','), d.spells.map((c) => c.uid).join(','), note,
       d.slots.map((s) => s.roost?.level ?? 0).join('.')].join('|');
     if (k === key) return;
@@ -201,7 +201,7 @@ registerScreen('battle', (app) => {
       cardEl({
         card: null, isCmd: true, sel: { kind: 'cmd' }, playable: cmdPlayable,
         onTap: () => { sel = same(sel, { kind: 'cmd' }) ? null : { kind: 'cmd' }; note = ''; },
-        tag: d.commander.inPlay ? 'in play' : 'place me',
+        tag: d.commander.inPlay ? 'in play' : d.commander.casts ? `tax +${d.commander.casts * BALANCE.commander.tax}` : 'place me',
       }),
       h('div.row-label', 'pool'),
       ...d.pool.map((c, i) => cardEl({

@@ -14,6 +14,8 @@ export const BALANCE = {
   night: { maxSeconds: 75, groupGap: 3, spawnGap: 0.7, leakMult: 4, rushMult: 3 },
   /** A roost destroyed at night is rebuilt at dawn with this fraction of its max HP. */
   rebuildHpPct: 50,
+  /** The commander instead returns to the command zone; each placement costs `tax` more than the last. */
+  commander: { tax: 2 },
   knockback: { distance: 0.5, duration: 0.4 },
   adjacency: { vampireDawnHealPct: 20 },
   /** Stats gain this fraction of base per level above 1. */

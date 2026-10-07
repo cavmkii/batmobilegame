@@ -195,29 +195,53 @@ describe('roost levels', () => {
 });
 
 describe('defense rules', () => {
+  const wreck = (d: Defense, slot: number) => {
+    d.slots[slot].roost!.hp = 1;
+    d.endDay();
+    for (const u of d.units) u.dead = true; // ground the roost's bats so the cat reaches it
+    (d as unknown as { spawnEnemy(id: string, x: number): void }).spawnEnemy('cat', d.slots[slot].x);
+    d.units[d.units.length - 1].y = 5.5;
+    for (let i = 0; i < 60 * 10 && d.slots[slot].roost && !d.slots[slot].roost!.ruined; i++) d.step(1 / 60);
+  };
+  const finishNight = (d: Defense) => {
+    for (let i = 0; i < 60 * 120 && d.phase === 'night'; i++) d.step(1 / 60);
+  };
+
   it('a destroyed roost stops blocking for the night and is rebuilt at dawn at the same level', () => {
-    const d = new Defense(cfg({ caveHp: 1e9, caveMax: 1e9 }));
+    const d = new Defense(cfg({ deck: [newCard('bat', 'common_vampire'), newCard('bat', 'little_brown')], caveHp: 1e9, caveMax: 1e9 }));
     d.guano = 99;
-    expect(d.place('cmd', 2)).toBe(true);
+    expect(d.place(0, 2)).toBe(true);
     const r = d.slots[2].roost!;
     r.level = 4;
-    r.hp = 1;
-    d.endDay();
-    for (const u of d.units) u.dead = true; // ground the commander's bats so the cat reaches the roost
-    (d as unknown as { spawnEnemy(id: string, x: number): void }).spawnEnemy('cat', 2.5);
-    d.units[d.units.length - 1].y = 5.5;
-    for (let i = 0; i < 60 * 10 && !r.ruined; i++) d.step(1 / 60);
+    wreck(d, 2);
     expect(r.ruined).toBe(true);
-    // Wrecked: no replacement bats tonight.
     for (let i = 0; i < 60 * 20; i++) d.step(1 / 60);
     expect(d.units.some((u) => u.side === 'bat' && u.home === 2)).toBe(false);
-    for (let i = 0; i < 60 * 120 && d.phase === 'night'; i++) d.step(1 / 60);
+    finishNight(d);
     expect(d.phase).toBe('day');
     expect(d.slots[2].roost).toBe(r);
     expect(r.ruined).toBe(false);
     expect(r.level).toBe(4);
     expect(r.hp).toBe(Math.round((r.maxHp * BALANCE.rebuildHpPct) / 100));
-    expect(d.commander.inPlay).toBe(true);
+  });
+
+  it('a destroyed commander returns to the command zone and costs more each time it is placed', () => {
+    const d = new Defense(cfg({ caveHp: 1e9, caveMax: 1e9 }));
+    d.guano = 99;
+    const base = d.commanderCost();
+    expect(d.place('cmd', 2)).toBe(true);
+    expect(d.commanderCost()).toBe(base + BALANCE.commander.tax);
+    wreck(d, 2);
+    expect(d.slots[2].roost).toBeNull();
+    expect(d.commander.inPlay).toBe(false);
+    finishNight(d);
+    expect(d.slots[2].roost).toBeNull(); // not rebuilt like other roosts
+    d.guano = 99;
+    const g = d.guano;
+    expect(d.place('cmd', 3)).toBe(true);
+    expect(g - d.guano).toBe(base + BALANCE.commander.tax);
+    expect(d.slots[3].roost!.level).toBe(1);
+    expect(d.commanderCost()).toBe(base + 2 * BALANCE.commander.tax);
   });
 
   it('gives terrain bonuses only to the matching clan', () => {
