@@ -23,7 +23,10 @@ export type Trait =
   | { kind: 'hasteAura'; pct: number; radius: number }
   | { kind: 'knockChance'; chance: number }
   | { kind: 'deathHeal'; amount: number; radius: number }
-  | { kind: 'swarm'; count: number };
+  /** Overrides how many bats a roost releases each night. */
+  | { kind: 'swarm'; count: number }
+  /** Enemy only: tiger moths jam sonar, shrinking nearby bats' range. */
+  | { kind: 'jammer'; pct: number; radius: number };
 
 export type TalentEffect =
   | { kind: 'hpPct'; pct: number }
@@ -69,7 +72,16 @@ export interface BatDef {
   /** Basic bat: unlimited copies allowed in a deck, never in gacha. */
   basic?: boolean;
   cost: number;
+  /** Per-bat combat stats. Range/speed are in old lane units (100 = 1 tile). */
   stats: Stats;
+  /** The roost this card places: its HP, how many nights it lasts, bats released per night. */
+  /** Roost HP, bats kept out at once, and seconds to replace one fallen bat at night. */
+  roost: { hp: number; count: number; respawn: number };
+  /**
+   * Tiles (dCol, dRow) that also gain +1 level when this roost is upgraded by stacking.
+   * dRow -1 is toward the enemies.
+   */
+  pattern: [number, number][];
   traits: Trait[];
   evolved: { name: string; trait?: Trait };
   talents: [Talent, Talent];
@@ -106,6 +118,8 @@ export interface EnemyDef {
   sprite: string;
   /** Pixel scale. */
   size: number;
+  /** Cost against a night's wave budget. */
+  threat: number;
 }
 
 export interface RelicDef {
@@ -117,15 +131,17 @@ export interface RelicDef {
 }
 
 export type RelicEffect =
-  | { kind: 'maxEnergy'; amount: number }
-  | { kind: 'regenPct'; pct: number }
-  | { kind: 'startEnergy'; amount: number }
+  | { kind: 'guanoPerDawn'; amount: number }
+  | { kind: 'refreshDiscount'; amount: number }
+  | { kind: 'startGuano'; amount: number }
   | { kind: 'speedPct'; pct: number }
   | { kind: 'hpPct'; pct: number }
   | { kind: 'atkPct'; pct: number }
-  | { kind: 'commanderTax'; delta: number }
+  | { kind: 'commanderDiscount'; amount: number }
   | { kind: 'healAfterBattle'; amount: number }
-  | { kind: 'handSize'; amount: number };
+  | { kind: 'startLevel'; amount: number };
+
+export type TerrainId = 'pond' | 'fig' | 'cactus' | 'lamp' | 'pen';
 
 /** A card in a run deck. */
 export interface Card {

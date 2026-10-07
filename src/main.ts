@@ -1,7 +1,7 @@
 import './style.css';
 import './ui/metaScreens';
 import './ui/runScreens';
-import './ui/battleScreen';
+import './ui/defenseScreen';
 import { createApp } from './ui/app';
 
 const app = createApp(document.getElementById('app')!);

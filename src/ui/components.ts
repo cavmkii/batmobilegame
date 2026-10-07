@@ -40,7 +40,8 @@ export function cardFace(card: Pick<Card, 'kind' | 'id' | 'upgraded'>, owned?: O
     const lvl = owned ? `Lv ${owned.level}${owned.plus ? `+${owned.plus}` : ''}` : 'Lv 1 (unowned)';
     sub = def.basic ? 'Basic' : lvl;
     lines = [
-      `❤ ${fmt(bp.stats.hp)}  ⚔ ${fmt(bp.stats.atk)}  ↔ ${bp.stats.range}`,
+      `Roost ❤${fmt(bp.roost.hp)} · ${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''} out, +1 every ${bp.roost.respawn}s`,
+      `Each bat ❤${fmt(bp.stats.hp)} ⚔${fmt(bp.stats.atk)} ${bp.stats.range >= 100 ? 'ranged' : 'melee'}`,
       ...bp.traits.map(describeTrait),
     ];
   } else {
@@ -58,8 +59,27 @@ export function cardFace(card: Pick<Card, 'kind' | 'id' | 'upgraded'>, owned?: O
     h('div.cf-name', name + (card.upgraded ? '+' : '')),
     h('div.cf-sub', sub),
     !opts.compact && h('div.cf-lines', ...lines.map((l) => h('div', l))),
+    card.kind === 'bat' && !opts.compact ? patternGrid(card.id) : null,
     opts.footer && h('div.cf-footer', opts.footer),
   );
+}
+
+/**
+ * The tiles a bat's roost also levels when you stack it, as a small grid.
+ * The centre is the roost; up is toward the enemies.
+ */
+export function patternGrid(batId: string, size: 'sm' | 'xs' = 'sm') {
+  const pat = BAT_BY_ID[batId].pattern;
+  if (!pat.length) return h(`div.pattern.${size}.none`, 'no spread');
+  const reach = Math.max(1, ...pat.map(([c, r]) => Math.max(Math.abs(c), Math.abs(r))));
+  const cells: Node[] = [];
+  for (let r = -reach; r <= reach; r++) {
+    for (let c = -reach; c <= reach; c++) {
+      const on = pat.some(([pc, pr]) => pc === c && pr === r);
+      cells.push(h(`span${c === 0 && r === 0 ? '.me' : on ? '.on' : ''}`));
+    }
+  }
+  return h(`div.pattern.${size}`, { style: `grid-template-columns: repeat(${reach * 2 + 1}, 1fr)`, title: 'Stacking also levels these tiles' }, ...cells);
 }
 
 export function relicChip(id: string) {

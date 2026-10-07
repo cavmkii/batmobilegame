@@ -10,7 +10,7 @@ import {
 import { Rng, newSeed } from '../game/rng';
 import { startRun } from '../game/run';
 import { registerScreen, type App } from './app';
-import { batImg, clanPips, currencyBar, fmt, header } from './components';
+import { batImg, clanPips, currencyBar, fmt, header, patternGrid } from './components';
 import { h, toast } from './dom';
 
 const wallet = (app: App) => currencyBar([['✨', app.profile.xp], ['🪲', app.profile.glow]]);
@@ -121,7 +121,8 @@ registerScreen('bat', (app, s) => {
       h('tr', h('td', 'Cost'), h('td', bp.cost), h('td', 'HP'), h('td', fmt(bp.stats.hp))),
       h('tr', h('td', 'Attack'), h('td', fmt(bp.stats.atk)), h('td', 'Range'), h('td', bp.stats.range)),
       h('tr', h('td', 'Rate'), h('td', `${bp.stats.rate}s`), h('td', 'Speed'), h('td', Math.round(bp.stats.speed))),
-      h('tr', h('td', 'Knockbacks'), h('td', bp.stats.knockbacks), h('td'), h('td')),
+      h('tr', h('td', 'Roost HP'), h('td', fmt(bp.roost.hp)), h('td', 'Bats / night'), h('td', bp.roost.count)),
+      h('tr', h('td', 'Refill'), h('td', `${bp.roost.respawn}s`), h('td', 'Spread'), h('td', patternGrid(s.id, 'xs'))),
     ),
     bp.traits.length ? h('ul.traits', ...bp.traits.map((t) => h('li', describeTrait(t)))) : null,
     h('p.fact', '🦇 ', def.fact),
