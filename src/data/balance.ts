@@ -7,8 +7,13 @@ export const BALANCE = {
   units: { rangePerTile: 100, minMelee: 0.35, batSpeed: 2.5 / 100, enemySpeed: 1.6 / 100 },
   /** Guano: the in-level currency for placing bats, refreshing the pool and casting spells. */
   economy: { startGuano: 6, perDawn: 5, killsPerGuano: 4, refreshCost: 2, poolSize: 2, spellHandMax: 3 },
-  /** Roost levels from stacking. Level 10 holds one mega bat instead of a group. */
-  roostLevel: { max: 10, statPct: 15, hpPct: 12, megaHpMult: 3, megaAtkMult: 1.5, megaRespawnMult: 2 },
+  /**
+   * Roost levels. Two roosts of the same bat and the same level merge into one a level higher
+   * (a pool card counts as a level-1 roost). Each level adds a bat (up to maxExtraBats) and
+   * statPct to bat stats, so a merged roost is worth roughly the two it replaced.
+   * Level 10 holds one mega bat instead of a group.
+   */
+  roostLevel: { max: 10, statPct: 25, hpPct: 20, batsPerLevel: 1, maxExtraBats: 4, megaHpMult: 3, megaAtkMult: 1.5, megaRespawnMult: 2 },
   /** An enemy that reaches the cave hits once for atk × leakMult, then is gone (classic TD leak).
    *  Inside the roost zone with nothing blocking its column, an enemy rushes at speed × rushMult. */
   night: { maxSeconds: 75, groupGap: 3, spawnGap: 0.7, leakMult: 4, rushMult: 3 },

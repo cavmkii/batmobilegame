@@ -53,15 +53,25 @@ fertilizer.)
   (max 3). Casting costs guano. Spells are instants: you can cast them at night, and
   the heal spell also works during the day.
 
-**Roosts and stacking.**
-- A bat card placed on an empty tile builds a level-1 roost. The roost keeps a fixed
-  number of bats out and replaces fallen ones on a per-species cooldown (3 s for Little
-  Brown Bats, 14–16 s for heavies).
-- Placing the same bat on its own roost **stacks** it: +1 level. Each level gives +15%
-  bat stats and +12% roost HP.
-- **Pattern spread.** Each species has a grid pattern, and stacking it also gives +1
-  level to every roost in that pattern, whatever its type. It doesn't chain. The
-  patterns follow each bat's identity:
+**Roosts and merging.**
+- A bat card placed on an empty tile builds a level-1 roost. The roost keeps its bats
+  out and replaces fallen ones on a per-species cooldown (3 s for Little Brown Bats and
+  Fledglings, 14–16 s for heavies).
+- **Merging needs a matching level.** Two roosts of the same bat at the same level
+  merge into one roost a level higher. By day, tap one roost and then the other; the
+  first tile is freed. Merging is free. A pool card counts as a level-1 roost, so it can
+  be dropped onto a level-1 roost but not onto a level-2 one. To take a roost from 3 to
+  4, you first have to build another level-3 roost of the same bat. Roosts with a
+  partner on the board show a ⇄ marker.
+- **Level N costs 2^(N−1) copies.** Level 4 takes 8 copies; level 10 would take 512.
+  Through merging alone, levels top out around 3–5 in a level.
+- **Each level** adds one bat (up to +4) and +25% bat stats, and +20% roost HP. The extra
+  bat is what makes merging worth it: a level-2 roost with one more bat at +25% roughly
+  equals the two level-1 roosts it replaced, and it frees a tile.
+- **Pattern spread.** Each species has a grid pattern. When a merge (or a card drop)
+  levels a roost, every roost in its pattern also gains +1, whatever its type, without
+  chaining. Bumps are free levels: they can bring a roost level with its partner so the
+  pair can merge, or push one out of step. Bumps are the only realistic route to level 10.
 
   | Bat | Pattern |
   |---|---|
@@ -74,13 +84,11 @@ fertilizer.)
   | Hammer-headed, Tube-lipped, White-winged | all 8 around |
   | Fledgling | none |
 
-- **Level 10: mega bat.** The roost releases one giant bat instead of its group. It has
-  3× the group's total HP and 1.5× its total attack, and is only replaced after it dies,
-  on a doubled cooldown.
-- **Tall vs wide.** Small decks see the same card more often and stack higher. In bot
-  runs the 8-card starter reached level 9 or so on its top roost in a 7-night level,
-  while a 14-card drafted deck built more roosts at lower levels. Card removal at the
-  shop is now a way to build tall.
+- **Level 10: mega bat.** The roost releases one giant bat instead of its group: 3× the
+  full group's HP and 1.5× its attack. It's only replaced after it dies, on a doubled
+  cooldown.
+- **Level distribution in bot runs:** end-of-level roosts are mostly levels 1–3, with
+  pattern bumps carrying a few to 5–7. Level 10 hasn't appeared.
 
 **Wrecked roosts.** A roost at 0 HP is wrecked for the rest of the night: no bats,
 and it stops blocking its column. At dawn it's rebuilt at the same level with 50% HP.
@@ -95,7 +103,7 @@ and it stops blocking its column. At dawn it's rebuilt at the same level with 50
 - **Leaks.** An enemy that reaches the cave hits once for 4× its attack, then is gone.
 
 **Commander.** The commander sits in the command zone and costs guano to place. It can't
-be stacked, but other roosts' patterns can raise its level.
+be merged, but other roosts' patterns can raise its level.
 - Unlike other roosts, a destroyed commander is **not** rebuilt at dawn. It goes back to
   the command zone, and you can place it again on any day.
 - **Commander tax:** each placement costs +2 more than the one before (base, +2, +4…)
@@ -193,8 +201,8 @@ everything accrued. Beating the boss grants a large completion bonus.
 
 1. **Level length.** 7–10 nights per level is a 10–15 minute session, long for mobile.
    That's the price of having time to build. A mid-level save/resume would help.
-2. **Fledgling stacking.** Basics stack too, and a thin deck of Fledglings levels up
-   fast. Their mega bat is weak (a single bat ×3), but watch whether "stack Fledglings"
+2. **Fledgling merging.** Basics merge too, and a thin deck of Fledglings levels up
+   fast. Their roosts stay weak per bat, but watch whether "merge Fledglings"
    becomes the default line.
 3. **Commander strength.** Ghost Bat (fast, area damage, lifesteal) beats Flying Fox (a
    slow tank) in bot runs. The bot can't judge aura or pattern value, so a person needs
@@ -205,10 +213,15 @@ everything accrued. Beating the boss grants a large completion bonus.
 
 ## 10. Balance status (bot playtests)
 
-`tests/defense.test.ts` includes a bot that places its commander, stacks any pool bat
-onto its existing roost (or roosts it in a threatened column), takes spells, refreshes
-when it has spare guano, and casts damage spells when enemies get close. Each cell is 8
-seeds.
+`tests/defense.test.ts` includes a bot that places its commander, drops pool bats onto a
+matching level-1 roost (or roosts them in a threatened column), merges every same-level
+pair it can (keeping the copy in the better spot), takes spells, refreshes when it has
+spare guano, and casts damage spells when enemies get close. Each cell is 8 seeds.
+
+- **Same-level merging:** with an extra bat per level, defenses got stronger (a starter
+  beat elites 8/8), so waves went up about 25% (10% on the two opening levels). After
+  that, starter decks at level 1 win elites 5–8/8, the boss is 0–1/8 at level 1, and
+  6–8/8 at level 5.
 
 - **Starter decks at roster level 1** win the row 0–2 levels. Hawk Ridge and the elites
   are a test, and the boss is 0–1/8.

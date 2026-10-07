@@ -16,8 +16,8 @@ const OY = 22;
 export const toScreen = (x: number, y: number) => ({ sx: x * TX, sy: OY + y * TY });
 
 export interface Highlight {
-  /** slot idx -> 'ok' (empty tile) | 'bonus' (terrain match) | 'stack' (same-type roost to level up) */
-  slots: Map<number, 'ok' | 'bonus' | 'stack'>;
+  /** slot idx -> 'ok' (empty tile) | 'bonus' (terrain match) | 'stack' (merge target) | 'from' (roost picked to merge) */
+  slots: Map<number, 'ok' | 'bonus' | 'stack' | 'from'>;
   /** Tiles a stack would also level through the bat's pattern. */
   pattern: Set<number>;
   batId: string | null;
@@ -99,11 +99,18 @@ export class FieldRenderer {
         g.fillStyle = 'rgba(120,200,255,0.18)';
         g.fillRect(x0, y0, w, h);
       }
+      // During the day, mark roosts that already have a merge partner on the board.
+      if (d.phase === 'day' && s.roost && !hl.slots.size && d.mergeTargets(s.idx).length) {
+        g.fillStyle = '#7ac8ff';
+        g.font = 'bold 11px monospace';
+        g.textAlign = 'left';
+        g.fillText('⇄', x0 + 3, y0 + h - 8);
+      }
       const mark = hl.slots.get(s.idx);
       if (mark) {
-        g.strokeStyle = mark === 'stack' ? '#7ac8ff' : mark === 'bonus' ? '#7dff9a' : '#ffc23d';
-        g.lineWidth = mark === 'stack' ? 3 : 2;
-        g.setLineDash(mark === 'stack' ? [] : [4, 3]);
+        g.strokeStyle = mark === 'from' ? '#ffffff' : mark === 'stack' ? '#7ac8ff' : mark === 'bonus' ? '#7dff9a' : '#ffc23d';
+        g.lineWidth = mark === 'stack' || mark === 'from' ? 3 : 2;
+        g.setLineDash(mark === 'stack' || mark === 'from' ? [] : [4, 3]);
         g.strokeRect(x0 + 1, y0 + 1, w - 2, h - 2);
         g.setLineDash([]);
         if (mark === 'stack') {

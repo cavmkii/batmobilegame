@@ -61,9 +61,27 @@ export function botDay(d: Defense) {
       const target = stack ? stack.idx : bestEmpty(c.id);
       if (target >= 0) d.place(i, target);
     }
+    mergeAll(d);
     const reserve = d.spells.length ? 1 : 0;
     if (d.guano - d.refreshCost < 2 + reserve) break;
     if (!d.refresh()) break;
+  }
+  mergeAll(d);
+}
+
+/** Merge every same-bat, same-level pair, keeping the copy in the better spot (front row, threatened column). */
+function mergeAll(d: Defense) {
+  const cols = new Set(d.tonight.map((g) => g.col));
+  const value = (idx: number) => (cols.has(d.slots[idx].col) ? 10 : 0) + (2 - d.slots[idx].row) * 2;
+  for (let guard = 0; guard < 20; guard++) {
+    let best: [number, number] | null = null;
+    for (const a of d.slots) {
+      if (!a.roost) continue;
+      for (const b of d.mergeTargets(a.idx)) {
+        if (value(b.idx) >= value(a.idx) && (!best || value(b.idx) > value(best[1]))) best = [a.idx, b.idx];
+      }
+    }
+    if (!best || !d.merge(best[0], best[1])) return;
   }
 }
 
@@ -138,16 +156,45 @@ describe('pool and guano', () => {
 describe('roost levels', () => {
   const stackDeck = () => deckOf('egyptian_fruit', 'egyptian_fruit', 'egyptian_fruit', 'egyptian_fruit');
 
-  it('stacking the same bat levels its roost; a different bat cannot stack', () => {
+  it('a pool card merges only onto a level-1 roost of the same bat', () => {
     const d = new Defense(cfg({ commanderId: 'flying_fox', roster: roster(['flying_fox', 'egyptian_fruit', 'pallas_tongue']), deck: stackDeck() }));
     d.guano = 99;
     d.place(0, 7);
     expect(d.canPlace(1, 7)).toBe(true);
     d.place(1, 7);
     expect(d.slots[7].roost!.level).toBe(2);
-    d.slots[7].roost!.batId = 'pallas_tongue';
     d.refresh();
-    expect(d.canPlace(0, 7)).toBe(false);
+    expect(d.canPlace(0, 7)).toBe(false); // level 2 now: needs another level 2
+    expect(d.canPlace(0, 12)).toBe(true); // an empty tile is fine
+  });
+
+  it('two roosts merge only at the same level, freeing a tile and firing the pattern', () => {
+    // Egyptian Fruit Bat pattern: the tile to its right.
+    const d = new Defense(cfg({ commanderId: 'flying_fox', roster: roster(['flying_fox', 'egyptian_fruit']), deck: stackDeck() }));
+    d.guano = 99;
+    d.place(0, 5);
+    d.place(1, 6);
+    d.slots[5].roost!.level = 2;
+    expect(d.canMerge(6, 5)).toBe(false); // levels 1 and 2
+    d.slots[6].roost!.level = 2;
+    d.place('cmd', 7); // right of tile 6
+    expect(d.merge(5, 6)).toBe(true);
+    expect(d.slots[5].roost).toBeNull();
+    expect(d.slots[6].roost!.level).toBe(3);
+    expect(d.slots[7].roost!.level).toBe(2); // pattern bump on the commander
+    expect(d.canMerge(7, 6)).toBe(false); // commanders never merge
+  });
+
+  it('each level adds a bat, up to the cap', () => {
+    const d = new Defense(cfg({ deck: stackDeck(), commanderId: 'flying_fox', roster: roster(['flying_fox', 'egyptian_fruit']) }));
+    d.place(0, 7);
+    const r = d.slots[7].roost!;
+    const base = BAT_BY_ID.egyptian_fruit.roost.count;
+    expect(d.batsPerRoost(r)).toBe(base);
+    r.level = 3;
+    expect(d.batsPerRoost(r)).toBe(base + 2);
+    r.level = 9;
+    expect(d.batsPerRoost(r)).toBe(base + BALANCE.roostLevel.maxExtraBats);
   });
 
   it('a stack also levels the roosts in the bat pattern, without chaining', () => {

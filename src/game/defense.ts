@@ -200,9 +200,33 @@ export class Defense {
     return !slot.roost || this.canStackOn(slot, c.id);
   }
 
+  /** A pool card is a level-1 roost, so it can only merge onto a level-1 roost of the same bat. */
   canStackOn(slot: Slot, batId: string): boolean {
     const r = slot.roost;
-    return !!r && !r.isCommander && r.batId === batId && r.level < L.max;
+    return !!r && !r.isCommander && !r.ruined && r.batId === batId && r.level === 1;
+  }
+
+  /** Two roosts merge if they're the same bat at the same level (commanders never merge). */
+  canMerge(fromIdx: number, toIdx: number): boolean {
+    if (this.phase !== 'day' || fromIdx === toIdx) return false;
+    const a = this.slots[fromIdx]?.roost;
+    const b = this.slots[toIdx]?.roost;
+    return !!a && !!b && !a.isCommander && !b.isCommander && !a.ruined && !b.ruined
+      && a.batId === b.batId && a.level === b.level && b.level < L.max;
+  }
+
+  /** Merge roost `from` into roost `to`: `to` gains a level (and fires its pattern); `from` is freed. Free. */
+  merge(fromIdx: number, toIdx: number): boolean {
+    if (!this.canMerge(fromIdx, toIdx)) return false;
+    this.slots[fromIdx].roost = null;
+    this.effects.push({ kind: 'place', x: this.slots[fromIdx].x, y: this.slots[fromIdx].y, r: 0.4, t: this.clock });
+    this.mergeUp(this.slots[toIdx]);
+    return true;
+  }
+
+  /** Slots holding a roost that `fromIdx` could merge into right now. */
+  mergeTargets(fromIdx: number): Slot[] {
+    return this.slots.filter((s) => this.canMerge(fromIdx, s.idx));
   }
 
   canTakeSpell(i: number): boolean {
@@ -257,8 +281,7 @@ export class Defense {
     // Placed cards cycle back through the deck, so the same bat can be drawn again and stacked.
     this.discard.push(card);
     if (slot.roost) {
-      this.levelUp(slot, 1);
-      for (const t of this.patternTiles(slot.idx, card.id)) if (t.roost) this.levelUp(t, 1);
+      this.mergeUp(slot);
     } else {
       this.newRoost(slot, this.batBlueprint(card), false);
     }
@@ -446,8 +469,15 @@ export class Defense {
     }
   }
 
-  private batsPerRoost(r: Roost): number {
-    return this.isMega(r) ? 1 : r.bp.roost.count;
+  /** The result of a merge: +1 level here, then +1 to every roost in this bat's pattern (no chaining). */
+  private mergeUp(slot: Slot) {
+    this.levelUp(slot, 1);
+    for (const t of this.patternTiles(slot.idx, slot.roost!.batId)) if (t.roost && !t.roost.ruined) this.levelUp(t, 1);
+  }
+
+  batsPerRoost(r: Roost): number {
+    if (this.isMega(r)) return 1;
+    return r.bp.roost.count + Math.min(L.maxExtraBats, (r.level - 1) * L.batsPerLevel);
   }
 
   /** Each roost tops its bats back up, one at a time, on its own cooldown (mega bats: only after death). */
@@ -587,8 +617,9 @@ export class Defense {
     let atk = bp.stats.atk * lvl;
     const mega = this.isMega(r);
     if (mega) {
-      hp *= bp.roost.count * L.megaHpMult;
-      atk *= bp.roost.count * L.megaAtkMult;
+      const group = bp.roost.count + L.maxExtraBats;
+      hp *= group * L.megaHpMult;
+      atk *= group * L.megaAtkMult;
     }
     if (slot.terrain === 'fig' && this.terrainMatches(slot.idx, bp.batId)) hp *= 1.3;
     this.addUnit({
