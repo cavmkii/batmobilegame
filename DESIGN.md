@@ -1,4 +1,4 @@
-# Batmobile — Game Design (v0.4: Matriarchs and flocks)
+# Batmobile — Game Design (v0.6: Saga, charms and formations)
 
 A mobile collect-and-upgrade game crossed with a deckbuilder roguelite. You collect
 bats, level them permanently, and take a matriarch-led flock into runs. Each fight is
@@ -11,6 +11,70 @@ the source of round-to-round variety. The meta loop (roster, gacha, run map) is 
 
 Numbers below are starting values. All of them live in `src/data/` and
 `src/data/balance.ts` so they can be tuned without touching logic.
+
+## 0. v0.6: the Balatro layer and the saga map
+
+**Why.** Deckbuilding needed more decisions per run, and the meta needed somewhere to go. Balatro
+works through hand types levelled by planets, jokers that bend rules and multiply, and an economy
+with interest. Each now has an analogue here. A Candy Crush–style map was the ask for
+"keep going"; an endless sequence of levels with one ever-growing build would remove the
+deckbuilding pressure, so the saga map sits *above* runs instead.
+
+**Saga map (home → Saga).** An endless path of nodes. Each node is a short run: a 6-row map
+(battle, mixed, battle/elite, mixed, rest, boss), so 3 levels and a boss. Collection carries
+over (bats, levels, skills, matriarchs); deck, charms, relics and star charts reset per node.
+- Nodes 1–12 are hand-made: biome, modifiers, clan-only restrictions, the nursery objective,
+  a fixed boss rule, and two star goals. After that nodes are generated from the node number:
+  stable, mixing the same ingredients, with twists stacking slowly.
+- Stars: 1 for clearing, +1 per goal (Sealed: no leaks; Healthy: ≥75% cave; Frugal: no
+  rerolls; Small colony: ≤7 roosts; Tower: a level-6 roost). Best stars are kept; replays allowed.
+  First clear pays 100 + 10×node Glowbugs.
+- Difficulty: enemies ×(1 + 0.05 per node past 3), and early bosses sit shallower on the 8-row
+  scale (node 1's boss at depth 3, full depth from node 5). The 8-row act is still there as
+  **Custom run** with free choice of map and modifiers.
+- Nursery objective: a 600-HP roost with no bats mid-field in each regular battle. If it's
+  wrecked, the level is lost.
+
+**Charms (jokers).** 5 slots; 16 charms, sold in the Fig Market (40/60/90 figs) and offered 1-of-2
+after elites; sell for half. Most break a rule: Ripple (pattern bumps chain once), Foster Mother
+(Fledglings merge into anything), Twins, Beacon, Vanguard, Phoenix Roost, Second Wind (cave
+holds at 1 HP once, then the charm breaks), plus economy ones (Thrift, Hoarder, Windfall, Scavenger).
+
+**Formations (hand types; replace clan bonuses).** Shapes on the 5×3 grid that stand at dusk:
+
+| Formation | Shape | Bonus (level 1, +per level) |
+|---|---|---|
+| Pair | two of the same species side by side or stacked | those bats +20% attack (+10) |
+| Line | 3+ of one clan in a row | those bats attack 20% faster (+10) |
+| Column | a full column, any species | those bats +30% HP (+15) |
+| Cluster | 2×2 sharing a clan | +2 guano at dawn (+1) |
+| Full Row | all five tiles of a row | those roosts take 25% less damage (+10, max 75) |
+
+Star charts (planets) level a formation for the run: in the shop (35 figs) and offered
+instead of a card after some battles. Star Gazer (charm) and Star Map (relic, replaced Kin Call)
+add a level to all. Formations show as coloured outlines on the field and chips under the board.
+Clans now matter through Lines, Clusters, terrain and saga restrictions.
+
+**Card enhancements (tarot).** Bought in the shop ("Moonlight") and applied to a bat card:
+Foil (roost starts at level 2), Wild (merges onto any level-1 roost of its clan), Echo (placing it
+adds a Fledgling to the discard for the level), Glass (+60% damage, but the card shatters out of
+the deck if its roost is wrecked).
+
+**Interest.** At dawn, +1 guano per 5 unspent, up to 3 (Hoarder: 6). Banking versus building.
+
+**Boss rules (boss blinds).** Owl's Watch (left column closed), Drought (roosts make no guano),
+Hawk's Eye (each dusk, the highest roost loses a level), Storm (pool shows one fewer card).
+
+**Night forecast.** Each threatened column shows SAFE / RISKY / DANGER by day: the colony's
+damage reaching that column (neighbours count half, two away a fifth) against the HP coming
+down it. Calibrated against the bot over every encounter: SAFE columns leaked on about 1% of
+nights, RISKY about 13%, DANGER 35–45%. Words, not numbers, because the estimate is rough.
+
+**Bot limits.** The balance bot doesn't build formations on purpose, buy charms, or use
+enhancements, so it measures the floor, not those systems. A saga simulation without drafts or
+shops: a new collection clears node 1 about 4/6; level-5 bats get through about node 8;
+level-9 bats stall in the low 20s. That's the intended shape (progression gates depth), but
+the charm and formation values themselves are first guesses that need human play.
 
 ## 1. The two loops
 
@@ -159,7 +223,7 @@ mostly Fledglings. The commander was one extra roost. v0.4 replaces all of it.
   spells, the rest new species by rarity. The card shows "In deck: N" or "New". The choice is
   between depth (more merges) and breadth (new patterns and clans). Card removal in the shop
   matters now: thinning the deck raises merge odds.
-- **Clan bonuses** replace identity (see §4).
+- Formations (§0) reward committing to a clan through Lines and Clusters.
 
 ## 4. Clans (real bat diets)
 
@@ -174,19 +238,7 @@ mostly Fledglings. The commander was one extra roost. v0.4 replaces all of it.
 Vampire bats really do regurgitate blood meals to roost-mates who failed to
 feed; that's where the Sanguivore heal-on-death mechanic comes from.
 
-**Clan bonuses.** Each clan sums the levels of its standing roosts on the field (dual-clan
-bats count for both). At 3 / 6 / 10 it unlocks a tier. Bonuses lock in at dusk.
-Counting levels, not roosts, means merging tall doesn't cost you the bonus.
-
-| Clan | Bonus (tier 1 / 2 / 3) |
-|---|---|
-| Frugivore | at dawn every roost heals 20 / 40 / 70% |
-| Insectivore | insectivores attack 15 / 30 / 50% faster |
-| Sanguivore | sanguivores +10 / 20 / 35% lifesteal |
-| Piscivore | piscivores +15 / 30 / 50% damage |
-| Nectarivore | +1 / 2 / 3 guano each dawn |
-
-The Kin Call relic (which replaced Blood Pact) adds 2 levels to every clan on the field.
+**Clan bonuses** (v0.4–0.5) were replaced by formations in v0.6 (see §0).
 
 Starter matriarchs: **Great Flying Fox**, **Ghost Bat**, **Spectral Bat**. Greater Noctule is
 a legendary summon.

@@ -6,7 +6,13 @@ import { ENCOUNTERS } from '../data/enemies';
 import type { Card } from '../data/types';
 import type { NodeType } from '../game/map';
 import { copiesIn } from '../game/deck';
+import { CHARM_BY_ID, CHARM_SLOTS, charmSellValue } from '../data/charms';
+import { ENHANCE_BY_ID } from '../data/enhance';
+import { FORMATION_BY_ID, STAR_CHART_PRICE, type FormationId } from '../data/formations';
+import { GOALS, sagaNode } from '../data/saga';
+import { BOSS_RULE_BY_ID } from '../data/bossRules';
 import {
+  charmPrice, charmsFull, enhanceCard, sellCharm, studyChart, takeCharm,
   EVENT_BY_ID, addCard, availableNodes, cardName, chooseEventOption, combatRewards, deckFull, enterNode, finishRun, heal,
   leaveNode, removeCard, takeRelic, upgradeCard, type Offer, type RunState,
 } from '../game/run';
@@ -27,7 +33,44 @@ function runHud(app: App) {
     h('div.cave-hp', h('span', '🏔 Cave'), h('div.hpbar', h('div', { style: `width:${pct * 100}%` })), h('span.small', `${fmt(r.caveHp)}/${fmt(r.caveMax)}`)),
     currencyBar([['🫐', r.figs], ['✨', r.xpEarned], ['🪲', r.glowEarned]]),
     h('div.relics', ...r.relics.map(relicChip)),
+    h('div.charm-bar',
+      ...Array.from({ length: CHARM_SLOTS }, (_, i) => {
+        const id = r.charms[i];
+        return id
+          ? h('button.charm-slot.full', { onclick: () => charmDialog(app, id) }, CHARM_BY_ID[id].icon)
+          : h('span.charm-slot', '·');
+      }),
+      h('span.small.muted', ' charms'),
+    ),
   );
+}
+
+/** A charm's text, with the option to sell it (frees the slot). */
+function charmDialog(app: App, id: string) {
+  const r = run(app);
+  const c = CHARM_BY_ID[id];
+  let close = () => {};
+  close = modal(h('div',
+    h('h2', `${c.icon} ${c.name}`),
+    h('p', c.desc),
+    h('p.small.muted', c.rarity),
+    h('div.actions',
+      h('button', { onclick: () => { sellCharm(r, id); app.save(); close(); app.refresh(); } }, `Sell for 🫐 ${charmSellValue(id)}`),
+      h('button.primary', { onclick: () => close() }, 'Keep'),
+    ),
+  ));
+}
+
+function charmCard(id: string, footer: Node) {
+  const c = CHARM_BY_ID[id];
+  return h(`div.charm-card.r-${c.rarity}`, h('div.cc-icon', c.icon), h('div', h('b', c.name), h('div.small', c.desc), h('div.small.muted', c.rarity)), footer);
+}
+
+function chartCard(id: FormationId, level: number, footer: Node) {
+  const f = FORMATION_BY_ID[id];
+  return h('div.charm-card.chart', h('div.cc-icon', '✦'),
+    h('div', h('b', `Star chart: ${f.name}`), h('div.small', `${f.name} level ${level} → ${level + 1}. ${f.shape}.`),
+      h('div.small.muted', `${f.text(f.base + f.step * (level - 1))} → ${f.text(f.base + f.step * level)}`)), footer);
 }
 
 export function depthOf(r: RunState) {
@@ -84,7 +127,8 @@ registerScreen('map', (app) => {
     return h(`button.map-node.t-${n.type}.${state}`, {
       style: `left:${n.x * 100}%;top:${y(n.row)}px`,
       title: enc?.name ?? n.type,
-      onclick: () => (state === 'available' ? goToNode(app, n.id) : toast(enc ? `${enc.name} (${n.type})` : n.type)),
+      onclick: () => (state === 'available' ? goToNode(app, n.id)
+        : toast(enc ? `${enc.name} (${n.type})${n.bossRule ? ` · ${BOSS_RULE_BY_ID[n.bossRule].name}: ${BOSS_RULE_BY_ID[n.bossRule].desc}` : ''}` : n.type)),
     }, NODE_ICON[n.type]);
   });
   const mat = MATRIARCH_BY_ID[r.matriarchId];
@@ -93,6 +137,7 @@ registerScreen('map', (app) => {
     runHud(app),
     !app.profile.tutorialDone ? h('div.coach', h('div.coach-step', 'The run map'), h('div', 'A run is a path up this map to the boss at the top. Each ⚔ is a level of several nights. Tap a glowing node to start.')) : null,
     r.modifiers?.length ? h('div.mod-chips', ...r.modifiers.map((id) => h('span.tag', { title: MODIFIER_BY_ID[id]?.desc }, `${MODIFIER_BY_ID[id]?.icon} ${MODIFIER_BY_ID[id]?.name}`)), h('span.small.muted', ` rewards +${rewardBonusPct(r.modifiers)}%`)) : null,
+    r.saga ? h('div.center.small', h('b', `Node ${r.saga}: ${sagaNode(r.saga).name}`), ' · ', sagaNode(r.saga).goals.map((g) => `★ ${GOALS[g].name}`).join(' · ')) : null,
     h('button.map-cmd', { onclick: () => toast(`${BAT_BY_ID[r.matriarchId].name}, ${mat.title}: ${mat.rule}`) }, batImg(r.matriarchId, 1), h('span.small', `♛ ${mat.title}`), h('span.small.muted', mat.rule)),
     h('div.map', { style: `height:${H}px` }, svg, ...nodes),
     h('div.legend.small.muted', ...Object.entries(NODE_ICON).map(([k, v]) => h('span', `${v} ${k}`))),
@@ -168,6 +213,15 @@ registerScreen('reward', (app) => {
     relicId ? h('section', h('h2', 'Relic'), relicCard(relicId, h('button.primary', {
       onclick: () => { takeRelic(r, relicId); r.rewardRelic = null; app.save(); app.refresh(); },
     }, 'Take'))) : null,
+    r.charmOffer?.length ? h('section',
+      h('h2', 'Choose a charm'),
+      charmsFull(r) ? h('p.small.muted', `Your ${CHARM_SLOTS} charm slots are full: sell one from the bar above to make room.`) : null,
+      ...r.charmOffer.map((id) => charmCard(id, h('button.primary', {
+        disabled: charmsFull(r),
+        onclick: () => { takeCharm(r, id); r.charmOffer = null; app.save(); app.refresh(); },
+      }, 'Take'))),
+      h('button.ghost', { onclick: () => { r.charmOffer = null; app.save(); app.refresh(); } }, 'Skip charm'),
+    ) : null,
     r.draft?.length ? h('section',
       h('h2', 'Choose a card'),
       h('p.muted.small', 'Copies of bats you already run make merges more likely; a new species adds a pattern and a clan.'),
@@ -175,10 +229,13 @@ registerScreen('reward', (app) => {
         onclick: () => takeOffer(app, o, () => { r.draft = null; app.save(); app.refresh(); }),
         footer: copiesTag(r.deck, o),
       }))),
-      h('button.ghost', { onclick: () => { r.draft = null; app.save(); app.refresh(); } }, 'Skip card'),
+      r.chartOffer ? h('div', h('p.small.muted', 'Or, instead of a card:'), chartCard(r.chartOffer, r.formations[r.chartOffer] ?? 1, h('button', {
+        onclick: () => { studyChart(r, r.chartOffer!); r.chartOffer = null; r.draft = null; app.save(); app.refresh(); },
+      }, 'Study'))) : null,
+      h('button.ghost', { onclick: () => { r.draft = null; r.chartOffer = null; app.save(); app.refresh(); } }, 'Skip'),
     ) : null,
-    !r.draft?.length && !relicId ? h('button.big.primary', { onclick: finish }, 'Continue') : null,
-    !r.draft?.length && relicId ? h('button.ghost', { onclick: finish }, 'Leave relic') : null,
+    !r.draft?.length && !relicId && !r.charmOffer?.length ? h('button.big.primary', { onclick: finish }, 'Continue') : null,
+    !r.draft?.length && (relicId || r.charmOffer?.length) ? h('button.ghost', { onclick: finish }, 'Leave the rest') : null,
   );
 });
 
@@ -208,6 +265,32 @@ registerScreen('shop', (app) => {
         },
       }, `🫐 ${o.price}`)),
     }))),
+    s.charms.length ? h('h2', 'Charms') : null,
+    ...s.charms.map((id, i) => charmCard(id, h('button.primary', {
+      disabled: r.figs < charmPrice(id) || charmsFull(r),
+      onclick: buy(charmPrice(id), () => { takeCharm(r, id); s.charms.splice(i, 1); }),
+    }, charmsFull(r) ? 'Slots full' : `🫐 ${charmPrice(id)}`))),
+    s.enhance.length ? h('h2', 'Moonlight') : null,
+    s.enhance.length ? h('p.small.muted', 'Enhance a bat card in your deck. A card holds one enhancement; a new one replaces the old.') : null,
+    ...s.enhance.map((mod, i) => {
+      const e = ENHANCE_BY_ID[mod];
+      return h('div.charm-card', h('div.cc-icon', e.icon), h('div', h('b', e.name), h('div.small', e.desc)), h('button.primary', {
+        disabled: r.figs < e.price,
+        onclick: () => pickFromDeck(app, `Make which card ${e.name}?`, (c) => c.kind === 'bat', (c) => {
+          if (r.figs < e.price || !enhanceCard(r, c.uid, mod)) return;
+          r.figs -= e.price;
+          s.enhance.splice(i, 1);
+          toast(`${cardName(c)} is now ${e.name}`);
+          app.save();
+          app.refresh();
+        }),
+      }, `🫐 ${e.price}`));
+    }),
+    s.chart ? chartCard(s.chart, r.formations[s.chart] ?? 1, h('button.primary', {
+      disabled: r.figs < STAR_CHART_PRICE,
+      onclick: buy(STAR_CHART_PRICE, () => { studyChart(r, s.chart!); s.chart = null; }),
+    }, `🫐 ${STAR_CHART_PRICE}`)) : null,
+    s.relic ? h('h2', 'Relic') : null,
     s.relic ? relicCard(s.relic, h('button.primary', {
       disabled: r.figs < P.relic,
       onclick: buy(P.relic, () => { takeRelic(r, s.relic); s.relic = null; }),
@@ -280,12 +363,14 @@ registerScreen('event', (app, s) => {
 registerScreen('runEnd', (app, s) => {
   return h('div.screen',
     h('div.hero',
-      h('h1.title', s.cleared ? 'Act cleared!' : 'The colony retreats'),
-      h('p', s.cleared ? `Clear bonus ×${BALANCE.rewards.clearBonusMult} applied.` : `Reached depth ${s.depth}/${BALANCE.run.rows}. Rewards are kept by depth.`),
+      h('h1.title', s.cleared ? (s.saga ? `Node ${s.saga} cleared!` : 'Act cleared!') : 'The colony retreats'),
+      s.saga && s.cleared ? h('p.big-stars', '★'.repeat(s.stars ?? 0) + '☆'.repeat(3 - (s.stars ?? 0))) : null,
+      h('p', s.cleared ? `Clear bonus ×${BALANCE.rewards.clearBonusMult} applied.` : 'Rewards earned so far are kept.'),
       currencyBar([['✨', `+${fmt(s.xp)}`], ['🪲', `+${fmt(s.glow)}`]]),
     ),
     h('div.menu',
-      h('button.big.primary', { onclick: () => app.go({ name: 'roster' }) }, 'Upgrade bats'),
+      s.saga ? h('button.big.primary', { onclick: () => app.go({ name: 'saga' }) }, s.cleared ? 'Saga map: next node' : 'Saga map') : null,
+      h(`button.big${s.saga ? '' : '.primary'}`, { onclick: () => app.go({ name: 'roster' }) }, 'Upgrade bats'),
       h('button.big', { onclick: () => app.go({ name: 'summon' }) }, 'Summon'),
       h('button.big', { onclick: () => app.go({ name: 'home' }) }, 'Home'),
     ),

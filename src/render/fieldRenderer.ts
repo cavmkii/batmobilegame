@@ -4,11 +4,13 @@ import { CLANS } from '../data/clans';
 import { BIOME_BY_ID } from '../data/setup';
 import { TERRAIN } from '../data/terrain';
 import type { Defense } from '../game/defense';
+import type { FormationId } from '../data/formations';
 import { Rng } from '../game/rng';
 import { attackStyle, type AttackStyle } from '../game/progression';
 import { batSprite, enemySprite } from './pixel';
 
 const F = BALANCE.field;
+export const FORMATION_COLOR: Record<FormationId, string> = { pair: '#ffe14a', line: '#7fe0ff', column: '#ff9ad0', cluster: '#9aff9a', full_row: '#ffb060' };
 export const VIEW_W = 300;
 export const VIEW_H = 460;
 const TX = VIEW_W / F.cols;
@@ -66,7 +68,11 @@ export class FieldRenderer {
     if (d.phase === 'day') this.drawDaylight();
 
     this.drawSlots(hl);
-    if (d.phase === 'day' && !d.previewHidden) this.drawPreview();
+    this.drawFormations();
+    if (d.phase === 'day' && !d.previewHidden) {
+      this.drawPreview();
+      this.drawForecast();
+    }
     this.drawCave();
 
     const units = [...d.units].sort((a, b) => a.y - b.y);
@@ -104,6 +110,27 @@ export class FieldRenderer {
         g.globalAlpha = s.roost ? 0.6 : 1;
         g.fillText(TERRAIN[s.terrain].icon, x0 + 2, y0 + 15);
         g.globalAlpha = 1;
+      }
+      if (d.tileClosed(s.idx)) {
+        // Owl's Watch: hatched and shut.
+        g.fillStyle = 'rgba(10,6,20,0.75)';
+        g.fillRect(x0, y0, w, h);
+        g.strokeStyle = 'rgba(255,140,90,0.35)';
+        g.lineWidth = 1;
+        g.save();
+        g.beginPath();
+        g.rect(x0, y0, w, h);
+        g.clip();
+        for (let k = -h; k < w; k += 7) {
+          g.beginPath();
+          g.moveTo(x0 + k, y0 + h);
+          g.lineTo(x0 + k + h, y0);
+          g.stroke();
+        }
+        g.restore();
+        g.font = '13px sans-serif';
+        g.textAlign = 'center';
+        g.fillText('🦉', sx, sy + 5);
       }
       if (s.roost) this.drawRoost(s.roost, sx, sy, x0, y0, w, h);
       if (hl.peek.has(s.idx)) {
@@ -174,6 +201,25 @@ export class FieldRenderer {
   private drawRoost(r: NonNullable<Defense['slots'][number]['roost']>, sx: number, sy: number, x0: number, y0: number, w: number, h: number) {
     const g = this.g;
     const def = BAT_BY_ID[r.batId];
+    if (r.nursery) {
+      g.fillStyle = r.ruined ? '#3a1a20' : '#3a2a50';
+      g.fillRect(x0 + 2, y0 + 2, w - 4, h - 4);
+      g.strokeStyle = '#ffb0d0';
+      g.lineWidth = 1.5;
+      g.strokeRect(x0 + 2.5, y0 + 2.5, w - 5, h - 5);
+      g.font = '14px sans-serif';
+      g.textAlign = 'center';
+      g.fillText('🍼', sx, sy + 1);
+      g.font = 'bold 7.5px sans-serif';
+      g.fillStyle = '#ffd0e4';
+      g.fillText('NURSERY', sx, y0 + h - 5);
+      const pct = Math.max(0, r.hp / r.maxHp);
+      g.fillStyle = '#000';
+      g.fillRect(x0 + 4, y0 + h - 2, w - 8, 3);
+      g.fillStyle = pct > 0.5 ? '#62e27a' : pct > 0.25 ? '#e2c25a' : '#e25a5a';
+      g.fillRect(x0 + 4, y0 + h - 2, (w - 8) * pct, 3);
+      return;
+    }
     // Perch: a branch across the top of the tile.
     g.fillStyle = '#4a3424';
     g.fillRect(x0 + 4, y0 + 6, w - 8, 3);
@@ -245,6 +291,50 @@ export class FieldRenderer {
     g.fillText(label, x0 + w - 1, y0 + 20);
     g.fillStyle = mega ? '#ff9a3d' : r.level >= 5 ? '#ffe14a' : '#e8e0f8';
     g.fillText(label, x0 + w - 2, y0 + 19);
+  }
+
+  /** Outline each standing formation (live by day, the dusk lock-in by night). */
+  private drawFormations() {
+    const g = this.g;
+    const d = this.d;
+    const hits = d.phase === 'day' ? d.formations() : d.phase === 'night' ? d.nightFormations : [];
+    hits.forEach((hit, k) => {
+      const ss = hit.slots.map((i) => d.slots[i]);
+      const minC = Math.min(...ss.map((s) => s.col));
+      const maxC = Math.max(...ss.map((s) => s.col));
+      const minR = Math.min(...ss.map((s) => s.row));
+      const maxR = Math.max(...ss.map((s) => s.row));
+      const inset = 1 + (k % 3);
+      const x = minC * TX + inset;
+      const y = OY + (F.roostTopY + minR) * TY + inset;
+      const w = (maxC - minC + 1) * TX - inset * 2;
+      const h = (maxR - minR + 1) * TY - inset * 2;
+      g.strokeStyle = FORMATION_COLOR[hit.id];
+      g.globalAlpha = d.phase === 'night' ? 0.35 : 0.85;
+      g.lineWidth = 1.5;
+      g.setLineDash(hit.id === 'pair' ? [] : [5, 2]);
+      g.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+      g.setLineDash([]);
+      g.globalAlpha = 1;
+    });
+  }
+
+  /** Day: one word per threatened column, from the forecast. */
+  private drawForecast() {
+    const g = this.g;
+    const y = OY + F.roostTopY * TY - 5;
+    g.font = 'bold 7px sans-serif';
+    g.textAlign = 'center';
+    for (const f of this.d.forecast()) {
+      const x = (f.col + 0.5) * TX;
+      const color = f.label === 'safe' ? '#62e27a' : f.label === 'risky' ? '#ffd24a' : '#ff5a5a';
+      const text = f.label.toUpperCase();
+      const w = g.measureText(text).width + 6;
+      g.fillStyle = 'rgba(0,0,0,0.7)';
+      g.fillRect(x - w / 2, y - 7, w, 9);
+      g.fillStyle = color;
+      g.fillText(text, x, y);
+    }
   }
 
   private drawPreview() {

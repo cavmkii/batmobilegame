@@ -1,6 +1,7 @@
 import { BAT_BY_ID } from '../data/bats';
 import { CLANS, RARITY_COLOR } from '../data/clans';
 import { RELIC_BY_ID } from '../data/relics';
+import { ENHANCE_BY_ID } from '../data/enhance';
 import { SPELL_BY_ID } from '../data/spells';
 import type { Card, ClanId, Rarity } from '../data/types';
 import { attackLabel, blueprint, describeTrait, displayName, type OwnedBat } from '../game/progression';
@@ -26,7 +27,7 @@ export function rarityOf(card: Pick<Card, 'kind' | 'id'>): Rarity {
  * A full card face for deck lists, drafts and the shop.
  * `owned` is the roster entry used for stats (undefined = unowned → level 1).
  */
-export function cardFace(card: Pick<Card, 'kind' | 'id' | 'upgraded'>, owned?: OwnedBat, opts: { onclick?: () => void; footer?: Node | string; selected?: boolean; compact?: boolean } = {}) {
+export function cardFace(card: Pick<Card, 'kind' | 'id' | 'upgraded' | 'mod'>, owned?: OwnedBat, opts: { onclick?: () => void; footer?: Node | string; selected?: boolean; compact?: boolean } = {}) {
   const rarity = rarityOf(card);
   const cls = `card-face r-${rarity}${opts.selected ? ' selected' : ''}${opts.compact ? ' compact' : ''}${card.upgraded ? ' upgraded' : ''}`;
   let art: Node, name: string, cost: number, clans: ClanId[], lines: string[], sub: string;
@@ -58,6 +59,7 @@ export function cardFace(card: Pick<Card, 'kind' | 'id' | 'upgraded'>, owned?: O
     h('div.cf-top', h('span.cost', cost), clanPips(clans)),
     h('div.cf-art', art),
     h('div.cf-name', name + (card.upgraded ? '+' : '')),
+    card.mod ? h('div.cf-mod', `${ENHANCE_BY_ID[card.mod].icon} ${ENHANCE_BY_ID[card.mod].name}`) : null,
     h('div.cf-sub', sub),
     !opts.compact && h('div.cf-lines', ...lines.map((l) => h('div', l))),
     card.kind === 'bat' && !opts.compact ? patternGrid(card.id, 'sm', blueprint(card.id, owned).pattern) : null,

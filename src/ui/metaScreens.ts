@@ -1,6 +1,10 @@
 import { BALANCE } from '../data/balance';
 import { BATS, BAT_BY_ID, STARTER_COMMONS, STARTER_MATRIARCHS } from '../data/bats';
-import { CLANS, CLAN_ORDER, RARITY_COLOR, SYNERGY, SYNERGY_TIERS } from '../data/clans';
+import { CLANS, CLAN_ORDER, RARITY_COLOR } from '../data/clans';
+import { BOSS_RULE_BY_ID } from '../data/bossRules';
+import { FORMATIONS } from '../data/formations';
+import { GOALS, sagaNode, type SagaNode } from '../data/saga';
+import { BIOME_BY_ID, MODIFIER_BY_ID } from '../data/setup';
 import { MATRIARCH_BY_ID, MATRIARCH_GUANO_EVERY, matriarchGuano } from '../data/matriarchs';
 import { flockOptions, validateSetup } from '../game/deck';
 import { canTakePlus, pull, resolveDupe, type PullResult } from '../game/gacha';
@@ -58,8 +62,11 @@ registerScreen('home', (app) => {
   return h('div.screen',
     h('div.hero', h('h1.title', 'BATMOBILE'), wallet(app)),
     h('div.menu',
-      h('button.big.primary.main-btn', { onclick: () => app.go({ name: p.run ? 'map' : 'prep' }) },
-        h('span.mb-icon', '▶'), h('span', p.run ? 'Continue run' : 'Play'), h('span.mb-sub', p.run ? 'A run is in progress' : 'Choose matriarch, flock, map and modifiers')),
+      h('button.big.primary.main-btn', { onclick: () => app.go({ name: p.run ? 'map' : 'saga' }) },
+        h('span.mb-icon', '▶'), h('span', p.run ? 'Continue run' : 'Saga'),
+        h('span.mb-sub', p.run ? (p.run.saga ? `Node ${p.run.saga} in progress` : 'A custom run is in progress') : `Node ${p.saga.unlocked}: ${sagaNode(p.saga.unlocked).name} · ★${totalStars(p.saga.stars)}`)),
+      !p.run ? h('button.big.main-btn', { onclick: () => app.go({ name: 'prep' }) },
+        h('span.mb-icon', '🎲'), h('span', 'Custom run'), h('span.mb-sub', 'Pick a map and modifiers; the long 8-row act')) : null,
       h('button.big.main-btn', { onclick: () => app.go({ name: 'guides' }) },
         h('span.mb-icon', '📖'), h('span', 'Field Guides'), h('span.mb-sub', `Bats ${owned}/${total}`),
         claimable(p).length ? h('span.badge', claimable(p).length) : null),
@@ -359,24 +366,26 @@ registerScreen('summon', (app) => {
 
 // ---------------- Run prep: matriarch + starting flock ----------------
 
-registerScreen('prep', (app) => {
+registerScreen('prep', (app, sc) => {
   const p = app.profile;
+  const node = sc.saga ? sagaNode(sc.saga) : null;
   const matriarchs = Object.keys(p.roster).filter((id) => BAT_BY_ID[id]?.matriarch && MATRIARCH_BY_ID[id]);
   let mat = p.lastMatriarch && matriarchs.includes(p.lastMatriarch) ? p.lastMatriarch : matriarchs[0];
-  const options = flockOptions(p).sort((a, b) => rank(a) - rank(b));
+  const options = flockOptions(p).filter((id) => !node?.restrict || BAT_BY_ID[id].clans.includes(node.restrict)).sort((a, b) => rank(a) - rank(b));
   const F = BALANCE.run.flock;
   let flock = (p.flock ?? []).filter((id) => options.includes(id)).slice(0, F.species);
-  if (!p.flock) flock = options.slice(0, F.species);
+  if (!p.flock || !flock.length) flock = options.slice(0, F.species);
   let biome = p.lastSetup?.biome ?? BIOMES[0].id;
   let mods: string[] = [...(p.lastSetup?.modifiers ?? [])];
 
   const body = h('div');
   const render = () => {
-    const err = validateSetup(p, mat, flock);
+    const err = validateSetup(p, mat, flock, node?.restrict);
     const m = MATRIARCH_BY_ID[mat];
     const fledglings = F.species * F.copies + F.fledglings - flock.length * F.copies;
     body.replaceChildren(
-      !p.tutorialDone ? h('div.coach', h('div.coach-step', 'First run'), h('div', 'Your matriarch and starting flock are already picked. Choose any map, leave modifiers off for now, and tap Begin run at the bottom.')) : '',
+      !p.tutorialDone ? h('div.coach', h('div.coach-step', 'First run'), h('div', 'Your matriarch and starting flock are already picked. Tap Begin run at the bottom.')) : '',
+      node ? nodeCard(node, p.saga.stars[node.n] ?? 0) : '',
       h('h2', 'Matriarch'),
       h('div.commander-row', ...matriarchs.map((id) => h(`button.cmd-pick${id === mat ? '.selected' : ''}`, {
         onclick: () => { mat = id; render(); },
@@ -399,18 +408,17 @@ registerScreen('prep', (app) => {
       })),
       h('p.muted.small', `Starting deck: ${flock.map((id) => `${F.copies}× ${BAT_BY_ID[id].name}`).join(', ') || 'no species'}, ${fledglings} Fledgling${fledglings === 1 ? '' : 's'}. Up to ${BALANCE.run.deckCap} cards.`),
       h('details.clan-ref',
-        h('summary', 'Clan bonuses'),
-        h('p.muted.small', `On the field, each clan adds up its roosts' levels. At ${SYNERGY_TIERS.join(', ')} it unlocks a bonus. Mixing clans is allowed; committing pays off.`),
-        ...CLAN_ORDER.map((c) => h('div.small', h('b', { style: `color:${CLANS[c].color}` }, CLANS[c].name), ': ',
-          SYNERGY[c].values.map((v) => SYNERGY[c].text(v)).join(' → '))),
+        h('summary', 'Formations'),
+        h('p.muted.small', 'Shapes on the roost grid that stand at dusk give a bonus for the night. Star charts level them up for the run.'),
+        ...FORMATIONS.map((f) => h('div.small', h('b', `${f.icon} ${f.name}`), `: ${f.shape}. `, h('span.muted', f.text(f.base)))),
       ),
-      h('h2', 'Map'),
-      h('div.choice-list', ...BIOMES.map((b) => h(`button.choice${b.id === biome ? '.selected' : ''}`, {
+      node ? '' : h('h2', 'Map'),
+      node ? '' : h('div.choice-list', ...BIOMES.map((b) => h(`button.choice${b.id === biome ? '.selected' : ''}`, {
         onclick: () => { biome = b.id; render(); },
       }, h('span.choice-icon', b.icon), h('div', h('b', b.name), h('div.small.muted', b.desc))))),
-      h('h2', 'Modifiers'),
-      h('p.muted.small', 'Optional. Each one makes the run harder and adds to its rewards.'),
-      h('div.choice-list', ...MODIFIERS.map((m) => {
+      node ? '' : h('h2', 'Modifiers'),
+      node ? '' : h('p.muted.small', 'Optional. Each one makes the run harder and adds to its rewards.'),
+      node ? '' : h('div.choice-list', ...MODIFIERS.map((m) => {
         const on = mods.includes(m.id);
         return h(`button.choice${on ? '.selected' : ''}`, {
           onclick: () => { mods = on ? mods.filter((x) => x !== m.id) : [...mods, m.id]; render(); },
@@ -420,15 +428,71 @@ registerScreen('prep', (app) => {
       h('button.big.primary', {
         disabled: !!err,
         onclick: () => {
-          p.run = startRun(p, mat, flock, newSeed(), { biome, modifiers: mods });
+          p.run = startRun(p, mat, flock, newSeed(), node ? { saga: node.n } : { biome, modifiers: mods });
           app.save();
           app.go({ name: 'map' });
         },
-      }, 'Begin run', rewardBonusPct(mods) ? h('div.small', `Rewards +${rewardBonusPct(mods)}%`) : null),
+      }, 'Begin run', !node && rewardBonusPct(mods) ? h('div.small', `Rewards +${rewardBonusPct(mods)}%`) : null),
     );
   };
   render();
-  return h('div.screen', header('Play', () => app.go({ name: 'home' })), body);
+  return h('div.screen', header(node ? `Node ${node.n}` : 'Custom run', () => app.go({ name: node ? 'saga' : 'home' })), body);
+});
+
+// ---------------- Saga map ----------------
+
+export const totalStars = (stars: Record<number, number>) => Object.values(stars).reduce((a, b) => a + b, 0);
+
+const starsText = (n: number) => '★'.repeat(n) + '☆'.repeat(3 - n);
+
+/** A node's twists, goals and boss, for the saga map and Play screen. */
+function nodeCard(node: SagaNode, stars: number) {
+  const biome = BIOME_BY_ID[node.biome];
+  const boss = BOSS_RULE_BY_ID[node.bossRule];
+  return h('div.node-card',
+    h('div.nc-head', h('b', `${node.n}. ${node.name}`), h('span.nc-stars', starsText(stars))),
+    h('div.small.muted', node.blurb),
+    h('div.nc-tags',
+      h('span.tag', `${biome?.icon} ${biome?.name}`),
+      ...node.modifiers.map((id) => h('span.tag', `${MODIFIER_BY_ID[id]?.icon} ${MODIFIER_BY_ID[id]?.name}`)),
+      node.restrict ? h('span.tag', { style: `border-color:${CLANS[node.restrict].color};color:${CLANS[node.restrict].color}` }, `${CLANS[node.restrict].name}s only`) : '',
+      node.objective === 'nursery' ? h('span.tag', '🍼 Protect the nursery') : '',
+      h('span.tag', `Boss: ${boss.icon} ${boss.name}`),
+      node.difficulty > 1 ? h('span.tag', `Enemies +${Math.round((node.difficulty - 1) * 100)}%`) : '',
+    ),
+    h('div.small', '★ Clear the boss', ...node.goals.map((g) => h('div', `★ ${GOALS[g].name}: ${GOALS[g].desc}`))),
+    node.objective === 'nursery' ? h('div.small.muted', 'Nursery: a roost with pups sits mid-field in each regular battle. If it\'s wrecked, the level is lost.') : '',
+  );
+}
+
+registerScreen('saga', (app) => {
+  const p = app.profile;
+  const top = p.saga.unlocked + 2;
+  const nodes: Node[] = [];
+  for (let n = top; n >= 1; n--) {
+    const node = sagaNode(n);
+    const open = n <= p.saga.unlocked;
+    const stars = p.saga.stars[n] ?? 0;
+    const current = n === p.saga.unlocked;
+    nodes.push(h(`div.saga-row.${n % 2 ? 'l' : 'r'}`,
+      h(`button.saga-node${open ? '' : '.locked'}${current ? '.current' : ''}${stars ? '.done' : ''}`, {
+        onclick: () => (open ? app.go({ name: 'prep', saga: n }) : toast('Clear the node before it to unlock this one.')),
+      }, h('span.sn-n', n), h('span.sn-stars', open ? starsText(stars) : '🔒')),
+      h('div.saga-label', h('b', node.name), h('div.small.muted', [
+        node.restrict ? `${CLANS[node.restrict].name}s only` : '',
+        node.objective === 'nursery' ? '🍼 nursery' : '',
+        ...node.modifiers.map((id) => MODIFIER_BY_ID[id]?.icon ?? ''),
+        BOSS_RULE_BY_ID[node.bossRule].icon,
+      ].filter(Boolean).join(' · '))),
+    ));
+  }
+  const list = h('div.saga-path', ...nodes);
+  setTimeout(() => list.querySelector('.current')?.scrollIntoView({ block: 'center' }), 30);
+  return h('div.screen',
+    header('Saga', () => app.go({ name: 'home' }), h('span.tag', `★ ${totalStars(p.saga.stars)}`)),
+    h('p.muted.small.center', 'Each node is a short run: a few levels and a boss. Your bats, levels and skills carry over; each run\'s deck, charms and relics start fresh. The path never ends.'),
+    list,
+  );
 });
 
 /** Starter commons first (in clan order), then the rest by rarity. */

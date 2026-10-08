@@ -159,3 +159,55 @@ describe('run flow', () => {
     expect(p.run).toBeUndefined();
   });
 });
+
+describe('saga', async () => {
+  const { sagaNode, SAGA_ROWS, AUTHORED_COUNT } = await import('../src/data/saga');
+  const { applyLevelResult, charmOffers, sellCharm, takeCharm } = await import('../src/game/run');
+
+  it('generates stable, valid nodes forever, with rising difficulty', () => {
+    for (let n = 1; n <= 80; n++) {
+      const a = sagaNode(n);
+      expect(sagaNode(n)).toEqual(a);
+      expect(a.goals[0]).not.toBe(a.goals[1]);
+      if (n > 1) expect(a.difficulty).toBeGreaterThanOrEqual(sagaNode(n - 1).difficulty);
+    }
+    expect(sagaNode(AUTHORED_COUNT + 1).name.length).toBeGreaterThan(0);
+  });
+
+  it('runs a saga node as a short map with its twists, then awards stars and unlocks the next', () => {
+    const p = starter('ghost_bat');
+    const run = startRun(p, 'ghost_bat', ['little_brown'], 9, { saga: 5 }); // insectivores only
+    expect(run.map.rows.length).toBe(SAGA_ROWS);
+    expect(run.restrict).toBe('INS');
+    const boss = Object.values(run.map.nodes).find((n) => n.type === 'boss')!;
+    expect(boss.bossRule).toBe(sagaNode(5).bossRule);
+    expect(boss.depth).toBe(Math.min(BALANCE.run.rows - 1, 2 + 5));
+    // A non-insectivore can't join the flock.
+    expect(() => startRun(starter('ghost_bat'), 'ghost_bat', ['egyptian_fruit'], 9, { saga: 5 })).toThrow(/only allows/);
+    const rng = new Rng(4);
+    for (let i = 0; i < 30; i++) for (const o of draftOffers(run, rng, 3)) if (o.kind === 'bat') expect(BAT_BY_ID[o.id].clans).toContain('INS');
+    run.status = 'won';
+    run.tally.maxLevel = 6; // 'tall' goal on node 5
+    const res = finishRun(p, run);
+    expect(res.stars).toBe(3); // cleared + noLeak (no leaks tallied) + tall
+    expect(p.saga.unlocked).toBe(6);
+  });
+
+  it('takes, sells and breaks charms; shattered glass leaves the deck', () => {
+    const p = starter('ghost_bat');
+    const run = startRun(p, 'ghost_bat', ['little_brown'], 3);
+    const offers = charmOffers(run, new Rng(1), 2);
+    expect(new Set(offers).size).toBe(2);
+    expect(takeCharm(run, offers[0])).toBe(true);
+    expect(takeCharm(run, offers[0])).toBe(false);
+    const figs = run.figs;
+    expect(sellCharm(run, offers[0])).toBe(true);
+    expect(run.figs).toBeGreaterThan(figs);
+    takeCharm(run, 'second_wind');
+    const uid = run.deck[0].uid;
+    applyLevelResult(run, { shattered: [uid], brokenCharms: ['second_wind'], tally: { leaks: 2, rerolls: 1, maxRoosts: 5, maxLevel: 3 } });
+    expect(run.deck.some((c) => c.uid === uid)).toBe(false);
+    expect(run.charms).toEqual([]);
+    expect(run.tally).toEqual({ leaks: 2, rerolls: 1, maxRoosts: 5, maxLevel: 3 });
+  });
+});

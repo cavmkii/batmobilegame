@@ -1,17 +1,24 @@
 import { BALANCE } from '../data/balance';
 import { BAT_BY_ID } from '../data/bats';
-import { CLANS, CLAN_ORDER, SYNERGY, synergyTier } from '../data/clans';
+import { CLANS, CLAN_ORDER } from '../data/clans';
+import { formationValue, type FormationId } from '../data/formations';
 import { MATRIARCH_BY_ID, matriarchGuano } from '../data/matriarchs';
+import type { BossRuleId } from '../data/bossRules';
 import { ENCOUNTERS, ENEMY_BY_ID, type Encounter } from '../data/enemies';
 import { RELIC_BY_ID } from '../data/relics';
 import { SPELL_BY_ID } from '../data/spells';
 import { BIOMES, BIOME_BY_ID, MODIFIER_BY_ID } from '../data/setup';
 import { TERRAIN } from '../data/terrain';
-import type { Card, ClanId, SpellEffect, Stats, TerrainId, Trait } from '../data/types';
+import type { Card, SpellEffect, Stats, TerrainId, Trait } from '../data/types';
 import { attackStyle, blueprint, type AttackStyle, type OwnedBat, type UnitBlueprint } from './progression';
 import { Rng } from './rng';
 
 const F = BALANCE.field;
+/**
+ * Scales the forecast so 1.0 means "probably holds". Calibrated with the bot over every encounter:
+ * columns at ≥1 leaked about 1% of nights, 0.6–1 about 13%, below 0.6 about 35–45%.
+ */
+const FORECAST_SECONDS = 8;
 const U = BALANCE.units;
 const E = BALANCE.economy;
 const L = BALANCE.roostLevel;
@@ -30,10 +37,24 @@ export interface DefenseConfig {
   biome?: string;
   /** Run modifier ids. */
   modifiers?: string[];
+  /** Charm ids held this run. */
+  charms?: string[];
+  /** Boss levels bend one rule. */
+  bossRule?: BossRuleId;
+  /** Extra enemy strength (saga depth), as a multiplier on HP and attack. */
+  difficulty?: number;
+  /** Formation levels from star charts (default 1). */
+  formationLevels?: Partial<Record<FormationId, number>>;
+  /** 'nursery': a nursery roost sits mid-field; if it is wrecked, the level is lost. */
+  objective?: 'nursery';
 }
 
 export interface Roost {
   batId: string;
+  /** Uids of Glass cards built into this roost (they shatter if it's wrecked). */
+  glass: string[];
+  /** The objective roost: holds no bats, can't merge; losing it loses the level. */
+  nursery?: boolean;
   bp: UnitBlueprint;
   /** 1..10. Raised by stacking the same bat, or by a neighbour's pattern. 10 = one mega bat. */
   level: number;
@@ -112,8 +133,7 @@ export interface Strike {
 
 export type Phase = 'day' | 'night' | 'won' | 'lost';
 
-/** Clan → summed level of its standing roosts, and the bonus tier (0–3) that gives. */
-export type ClanStrength = Record<ClanId, { levels: number; tier: number }>;
+export interface FormationHit { id: FormationId; slots: number[] }
 
 const NO_MODS: Mods = { atkPct: 0, hastePct: 0, lifesteal: 0, auraMult: 1 };
 
@@ -138,13 +158,14 @@ export class Defense {
   effects: Effect[] = [];
   strikes: Strike[] = [];
   cave: { hp: number; max: number };
-  /** Clan bonuses locked in at dusk (bats leaving roosts tonight use these). */
-  nightClans: ClanStrength = this.emptyClans();
+  /** Formations locked in at dusk (bats leaving roosts tonight use these). */
+  nightFormations: FormationHit[] = [];
+  private nightSlots = new Map<number, Set<FormationId>>();
   /** Enemies killed this night (feeds the dawn guano bonus). */
   kills = 0;
   /** Guano earned at the last dawn, for the UI. */
   lastIncome = 0;
-  lastIncomeParts = { base: 0, roosts: 0, kills: 0, relic: 0, clans: 0 };
+  lastIncomeParts = { base: 0, roosts: 0, kills: 0, relic: 0, clans: 0, interest: 0 };
   /** Seconds since the last enemy fell; dawn waits for BALANCE.night.dawnDelay. */
   private clearTimer = 0;
   /** Seconds into the current night (or total, for animation). */
@@ -161,7 +182,18 @@ export class Defense {
     return this.cfg.biome ?? BIOMES[0].id;
   }
   private mods = { extraNights: 0, guanoPerDawn: 0, wavePct: 0 };
-  private relic = { guanoPerDawn: 0, refreshDiscount: 0, startGuano: 0, speedPct: 0, hpPct: 0, atkPct: 0, startLevel: 0, synergyBonus: 0 };
+  private relic = { guanoPerDawn: 0, refreshDiscount: 0, startGuano: 0, speedPct: 0, hpPct: 0, atkPct: 0, startLevel: 0, formationBonus: 0 };
+  readonly charms: Set<string>;
+  /** Glass card uids that shattered this level (removed from the run deck afterwards). */
+  shattered: string[] = [];
+  /** Charms that broke this level (Second Wind). */
+  brokenCharms: string[] = [];
+  /** For star goals: leaks, rerolls, most roosts on the field, highest roost level. */
+  tally = { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0 };
+  /** Free rerolls left today (Thrift). */
+  private freeRerolls = 0;
+  /** Last dawn's interest, for the UI. */
+  lastInterest = 0;
   /** The matriarch's rule, unpacked. */
   readonly rule = { mergeRefund: 0, killsPerGuano: E.killsPerGuano, mergeReach: 0, poolExtra: 0 };
 
@@ -179,7 +211,8 @@ export class Defense {
     }
     this.nights = enc.nights + this.mods.extraNights;
     this.rng = new Rng(cfg.seed);
-    this.enemyMult = 1 + BALANCE.enemyRowScaling * cfg.row;
+    this.enemyMult = (1 + BALANCE.enemyRowScaling * cfg.row) * (cfg.difficulty ?? 1);
+    this.charms = new Set(cfg.charms ?? []);
     this.cave = { hp: cfg.caveHp, max: cfg.caveMax };
 
     for (const id of cfg.relics) {
@@ -197,7 +230,10 @@ export class Defense {
     this.slots = this.makeSlots();
     this.plans = Array.from({ length: this.nights }, (_, i) => this.planNight(i + 1));
     this.drawPile = this.rng.shuffle([...cfg.deck]);
-    this.pool = Array.from({ length: E.poolSize + this.rule.poolExtra }, () => null);
+    const poolSize = E.poolSize + this.rule.poolExtra + (this.charms.has('deep_pockets') ? 1 : 0) - (cfg.bossRule === 'storm' ? 1 : 0);
+    this.pool = Array.from({ length: Math.max(1, poolSize) }, () => null);
+    if (cfg.objective === 'nursery') this.placeNursery();
+    this.freeRerolls = this.charms.has('thrift') ? 1 : 0;
     this.fillPool();
     const mo = cfg.roster[cfg.matriarchId];
     this.guano = E.startGuano + this.relic.startGuano + (mo ? matriarchGuano(mo.level, mo.plus) : 0);
@@ -210,72 +246,146 @@ export class Defense {
   }
 
   get refreshCost(): number {
+    if (this.freeRerolls > 0) return 0;
     return Math.max(0, E.refreshCost - this.relic.refreshDiscount);
   }
 
+  get bossRule(): BossRuleId | undefined {
+    return this.cfg.bossRule;
+  }
+
+  get interestCap(): number {
+    return BALANCE.interest.cap + (this.charms.has('hoard') ? 3 : 0);
+  }
+
+  /** What unspent guano would earn at dawn. */
+  interestNow(): number {
+    return Math.min(this.interestCap, Math.floor(this.guano / BALANCE.interest.per));
+  }
+
+  /** Owl's Watch closes the leftmost column. */
+  tileClosed(slotIdx: number): boolean {
+    return this.cfg.bossRule === 'owl_watch' && this.slots[slotIdx]?.col === 0;
+  }
+
   cardCost(card: Card): number {
-    return card.kind === 'bat' ? this.batBlueprint(card).cost : SPELL_BY_ID[card.id].cost;
+    if (card.kind === 'bat') return this.batBlueprint(card).cost;
+    return Math.max(this.charms.has('night_shift') ? 0 : 1, SPELL_BY_ID[card.id].cost - (this.charms.has('night_shift') ? 1 : 0));
   }
 
   /** Can the pool card at `src` go on this tile: an empty tile, or a roost it can merge onto. */
   canPlace(src: number, slotIdx: number): boolean {
     if (this.phase !== 'day') return false;
     const slot = this.slots[slotIdx];
-    if (!slot) return false;
+    if (!slot || this.tileClosed(slotIdx)) return false;
     const c = this.pool[src];
     if (!c || c.kind !== 'bat' || this.guano < this.cardCost(c)) return false;
-    return !slot.roost || this.canStackOn(slot, c.id);
+    return !slot.roost || this.canStackOn(slot, c.id, c.mod === 'wild');
   }
 
   /**
    * Can a roost of this bat at `level` merge into `to`? Same bat, same level
    * (Pair Bond: the target may be up to rule.mergeReach levels higher).
    */
-  private mergeable(batId: string, level: number, to: Roost | null): boolean {
-    if (!to || to.ruined || to.batId !== batId) return false;
+  private mergeable(batId: string, level: number, to: Roost | null, wild = false): boolean {
+    if (!to || to.ruined || to.nursery) return false;
+    const sameKind = to.batId === batId
+      // Foster Mother: Fledglings merge into anything. Wild cards: anything of their clan.
+      || (batId === 'fledgling' && (this.charms.has('foster') || wild))
+      || (wild && BAT_BY_ID[batId].clans.some((c) => BAT_BY_ID[to.batId].clans.includes(c)));
+    if (!sameKind) return false;
     const gap = to.level - level;
     return gap >= 0 && gap <= this.rule.mergeReach;
   }
 
   /** A pool card is a level-1 roost, so it merges onto a level-1 roost of the same bat. */
-  canStackOn(slot: Slot, batId: string): boolean {
-    return this.mergeable(batId, 1, slot.roost);
+  canStackOn(slot: Slot, batId: string, wild = false): boolean {
+    return this.mergeable(batId, 1, slot.roost, wild);
   }
 
   /** Two roosts merge if they're the same bat at the same level. */
   canMerge(fromIdx: number, toIdx: number): boolean {
     if (this.phase !== 'day' || fromIdx === toIdx) return false;
     const a = this.slots[fromIdx]?.roost;
-    return !!a && !a.ruined && this.mergeable(a.batId, a.level, this.slots[toIdx]?.roost ?? null);
+    return !!a && !a.ruined && !a.nursery && this.mergeable(a.batId, a.level, this.slots[toIdx]?.roost ?? null);
   }
 
-  /** Summed roost levels per clan on the field (wrecked roosts don't count), with Kin Call. */
-  clanStrength(): ClanStrength {
-    const out = this.emptyClans();
+  /**
+   * Formations standing right now (wrecked roosts and the nursery don't count).
+   * Each hit lists the slots it covers.
+   */
+  formations(): FormationHit[] {
+    const at = (col: number, row: number) => {
+      const s = this.slots.find((o) => o.col === col && o.row === row);
+      return s?.roost && !s.roost.ruined && !s.roost.nursery ? s : null;
+    };
+    const clansOf = (s: Slot) => BAT_BY_ID[s.roost!.batId].clans;
+    const hits: FormationHit[] = [];
     for (const s of this.slots) {
-      if (!s.roost || s.roost.ruined) continue;
-      for (const c of BAT_BY_ID[s.roost.batId].clans) out[c].levels += s.roost.level;
+      if (!at(s.col, s.row)) continue;
+      // Pair: same species to the right or below (each pair found once).
+      for (const [dc, dr] of [[1, 0], [0, 1]] as const) {
+        const o = at(s.col + dc, s.row + dr);
+        if (o && o.roost!.batId === s.roost!.batId) hits.push({ id: 'pair', slots: [s.idx, o.idx] });
+      }
+      // Cluster: 2×2 with a shared clan, anchored top-left.
+      const block = [at(s.col, s.row), at(s.col + 1, s.row), at(s.col, s.row + 1), at(s.col + 1, s.row + 1)];
+      if (block.every(Boolean) && CLAN_ORDER.some((c) => block.every((b) => clansOf(b!).includes(c)))) {
+        hits.push({ id: 'cluster', slots: block.map((b) => b!.idx) });
+      }
     }
-    for (const c of CLAN_ORDER) {
-      if (out[c].levels > 0) out[c].levels += this.relic.synergyBonus;
-      out[c].tier = synergyTier(out[c].levels);
+    for (let row = 0; row < F.roostRows; row++) {
+      const cells = Array.from({ length: F.cols }, (_, col) => at(col, row));
+      if (cells.every(Boolean)) hits.push({ id: 'full_row', slots: cells.map((c) => c!.idx) });
+      // Line: longest runs of 3+ sharing a clan.
+      for (const clan of CLAN_ORDER) {
+        let run: Slot[] = [];
+        const flush = () => {
+          if (run.length >= 3) hits.push({ id: 'line', slots: run.map((r) => r.idx) });
+          run = [];
+        };
+        for (const c of cells) {
+          if (c && clansOf(c).includes(clan)) run.push(c);
+          else flush();
+        }
+        flush();
+      }
     }
-    return out;
+    for (let col = 0; col < F.cols; col++) {
+      const cells = Array.from({ length: F.roostRows }, (_, row) => at(col, row));
+      if (cells.every(Boolean)) hits.push({ id: 'column', slots: cells.map((c) => c!.idx) });
+    }
+    return hits;
   }
 
-  private emptyClans(): ClanStrength {
-    return Object.fromEntries(CLAN_ORDER.map((c) => [c, { levels: 0, tier: 0 }])) as ClanStrength;
+  /** A formation's level this run (star charts, Star Gazer, Star Map). */
+  formationLevel(id: FormationId): number {
+    return (this.cfg.formationLevels?.[id] ?? 1) + (this.charms.has('star_gazer') ? 1 : 0) + this.relic.formationBonus;
   }
 
-  /** The bonus value a clan gives at a strength (0 if below the first tier). */
-  static clanValue(clan: ClanId, cs: ClanStrength): number {
-    const t = cs[clan].tier;
-    return t ? SYNERGY[clan].values[t - 1] : 0;
+  formationValue(id: FormationId): number {
+    return formationValue(id, this.formationLevel(id));
+  }
+
+  /** Dawn guano from Clusters. */
+  clusterGuano(hits: FormationHit[]): number {
+    return hits.filter((h) => h.id === 'cluster').length * this.formationValue('cluster');
+  }
+
+  /** Slot idx → formation ids it's part of, from a list of hits. */
+  private bySlot(hits: FormationHit[]): Map<number, Set<FormationId>> {
+    const m = new Map<number, Set<FormationId>>();
+    for (const h of hits) for (const i of h.slots) {
+      if (!m.has(i)) m.set(i, new Set());
+      m.get(i)!.add(h.id);
+    }
+    return m;
   }
 
   /** Merge roost `from` into roost `to`: `to` gains a level (and fires its pattern); `from` is freed. Free. */
   merge(fromIdx: number, toIdx: number): boolean {
     if (!this.canMerge(fromIdx, toIdx)) return false;
+    this.slots[toIdx].roost!.glass.push(...this.slots[fromIdx].roost!.glass);
     this.slots[fromIdx].roost = null;
     this.effects.push({ kind: 'place', x: this.slots[fromIdx].x, y: this.slots[fromIdx].y, r: 0.4, t: this.clock });
     this.mergeUp(this.slots[toIdx]);
@@ -329,6 +439,50 @@ export class Defense {
     return r.level >= L.megaLevel;
   }
 
+  /**
+   * Night forecast, per column with enemies tonight: how much damage the colony can put into that
+   * column over FORECAST_SECONDS, against the HP coming down it. A rough guide, not a promise:
+   * bats chase the nearest enemy, so neighbouring columns count partly.
+   */
+  forecast(): { col: number; ratio: number; label: 'safe' | 'risky' | 'danger' }[] {
+    const threat = new Map<number, number>();
+    for (const g of this.tonight) {
+      const e = ENEMY_BY_ID[g.enemy];
+      threat.set(g.col, (threat.get(g.col) ?? 0) + g.count * e.stats.hp * this.enemyMult);
+    }
+    const out: { col: number; ratio: number; label: 'safe' | 'risky' | 'danger' }[] = [];
+    for (const [col, hp] of threat) {
+      let dps = 0;
+      for (const s of this.slots) {
+        const r = s.roost;
+        if (!r || r.ruined || r.nursery) continue;
+        const w = [1, 0.5, 0.2][Math.abs(s.col - col)] ?? 0;
+        if (!w) continue;
+        dps += w * this.roostDps(s);
+      }
+      const ratio = (dps * FORECAST_SECONDS) / hp;
+      out.push({ col, ratio, label: ratio >= 1 ? 'safe' : ratio >= 0.6 ? 'risky' : 'danger' });
+    }
+    return out.sort((a, b) => a.col - b.col);
+  }
+
+  /** Rough damage per second a roost's full group deals. */
+  private roostDps(s: Slot): number {
+    const r = s.roost!;
+    const bp = r.bp;
+    const lvl = 1 + (L.statPct * (r.level - 1)) / 100;
+    let atk = bp.stats.atk * lvl * (1 + this.modsFor(s).atkPct / 100);
+    let n = this.batsPerRoost(r);
+    if (this.isMega(r)) {
+      atk *= (bp.roost.count + L.maxExtraBats) * L.megaAtkMult;
+      n = 1;
+    }
+    const multi = bp.traits.find((t) => t.kind === 'multiHit');
+    const spread = bp.traits.some((t) => t.kind === 'aoe') ? 1.6 : multi && multi.kind === 'multiHit' ? 1 + (multi.targets - 1) * 0.5 : 1;
+    const aura = bp.traits.some((t) => t.kind === 'atkAura' || t.kind === 'hasteAura') ? 1.3 : 1;
+    return (n * atk * spread * aura) / bp.stats.rate;
+  }
+
   // ---------------- Day actions ----------------
 
   place(src: number, slotIdx: number): boolean {
@@ -339,11 +493,20 @@ export class Defense {
     this.guano -= this.cardCost(card);
     // Placed cards cycle back through the deck, so the same bat can be drawn again and stacked.
     this.discard.push(card);
+    if (card.mod === 'echo') this.discard.push({ uid: `echo-${card.uid}-${this.clock}`, kind: 'bat', id: 'fledgling', upgraded: false });
     if (slot.roost) {
+      if (card.mod === 'glass') slot.roost.glass.push(card.uid);
       this.mergeUp(slot);
     } else {
-      this.newRoost(slot, this.batBlueprint(card));
+      this.newRoost(slot, this.batBlueprint(card), card.mod === 'foil' ? 1 : 0);
+      if (card.mod === 'glass') slot.roost!.glass.push(card.uid);
+      // Twins: a new roost next to one of its own kind bumps that neighbour.
+      if (this.charms.has('twins')) {
+        const twin = this.neighbours(slot).find((n) => n.roost && !n.roost.ruined && n.roost.batId === card.id);
+        if (twin) this.levelUp(twin, 1);
+      }
     }
+    this.track();
     return true;
   }
 
@@ -358,6 +521,8 @@ export class Defense {
   refresh(): boolean {
     if (!this.canRefresh()) return false;
     this.guano -= this.refreshCost;
+    if (this.freeRerolls > 0) this.freeRerolls--;
+    this.tally.rerolls++;
     for (let i = 0; i < this.pool.length; i++) {
       if (this.pool[i]) this.discard.push(this.pool[i]!);
       this.pool[i] = null;
@@ -383,7 +548,10 @@ export class Defense {
     this.buffs = { atkPct: 0, lifesteal: 0, atkUntil: 0, hastePct: 0, hasteUntil: 0, slowPct: 0, slowUntil: 0 };
     // Nobody is out at dusk: every roost starts its cooldown and releases bats as it fills.
     this.clearTimer = 0;
-    this.nightClans = this.clanStrength();
+    this.duskCharms();
+    this.nightFormations = this.formations();
+    this.nightSlots = this.bySlot(this.nightFormations);
+    this.track();
     for (const slot of this.slots) if (slot.roost) slot.roost.respawnTimer = 0;
     let t = BALANCE.night.duskLead;
     this.spawnQueue = [];
@@ -437,11 +605,18 @@ export class Defense {
     this.effects = this.effects.filter((f) => this.clock - f.t < 0.8);
     this.strikes = this.strikes.filter((f) => this.clock - f.t < 0.45);
 
+    if (this.cave.hp <= 0 && this.charms.has('second_wind') && !this.brokenCharms.includes('second_wind')) {
+      this.cave.hp = 1;
+      this.brokenCharms.push('second_wind');
+      this.charms.delete('second_wind');
+      this.floats.push({ x: 2.5, y: F.caveY - 0.5, text: 'SECOND WIND!', color: '#9ae8ff', t: this.clock });
+    }
     if (this.cave.hp <= 0) {
       this.cave.hp = 0;
       this.phase = 'lost';
       return;
     }
+    if ((this.phase as Phase) === 'lost') return; // the nursery fell
     const enemiesLeft = this.spawnQueue.length > 0 || this.units.some((u) => u.side === 'enemy');
     if (!enemiesLeft) {
       // Let the last kill land before the sun comes up.
@@ -505,11 +680,11 @@ export class Defense {
     return groups;
   }
 
-  private newRoost(slot: Slot, bp: UnitBlueprint) {
-    slot.roost = { batId: bp.batId, bp, level: 1, hp: 0, maxHp: 0, respawnTimer: 0, ruined: false };
+  private newRoost(slot: Slot, bp: UnitBlueprint, bonusLevels = 0) {
+    slot.roost = { batId: bp.batId, bp, level: 1, hp: 0, maxHp: 0, respawnTimer: 0, ruined: false, glass: [] };
     slot.roost.maxHp = this.roostMaxHp(slot);
     slot.roost.hp = slot.roost.maxHp;
-    if (this.relic.startLevel) this.levelUp(slot, this.relic.startLevel, false);
+    if (this.relic.startLevel + bonusLevels) this.levelUp(slot, this.relic.startLevel + bonusLevels, false);
     this.effects.push({ kind: 'place', x: slot.x, y: slot.y, r: 0.6, t: this.clock });
   }
 
@@ -528,7 +703,7 @@ export class Defense {
     if (r.level === before) return;
     const oldMax = r.maxHp;
     r.maxHp = this.roostMaxHp(slot);
-    r.hp += r.maxHp - oldMax;
+    r.hp = Math.max(1, Math.min(r.maxHp, r.hp + r.maxHp - oldMax));
     if (fx) {
       this.effects.push({ kind: 'level', x: slot.x, y: slot.y, r: 0.5, t: this.clock });
       this.floats.push({ x: slot.x, y: slot.y, text: r.level === L.megaLevel ? 'MEGA!' : r.level === L.armorLevel ? 'ARMOURED!' : `Lv${r.level}`, color: '#ffe14a', t: this.clock });
@@ -538,16 +713,70 @@ export class Defense {
   /** The result of a merge: +1 level here, then +1 to every roost in this bat's pattern (no chaining). */
   private mergeUp(slot: Slot) {
     this.levelUp(slot, 1);
-    if (this.rule.mergeRefund) {
-      this.guano += this.rule.mergeRefund;
-      this.floats.push({ x: slot.x, y: slot.y + 0.3, text: `+${this.rule.mergeRefund} guano`, color: '#d8c27a', t: this.clock });
+    if (this.rule.mergeRefund) this.gain(slot, this.rule.mergeRefund);
+    const bumped = this.firePattern(slot);
+    if (this.charms.has('windfall') && bumped.length >= 2) this.gain(slot, 2);
+    // Ripple: each bumped roost fires its own pattern once (no further chaining).
+    if (this.charms.has('ripple')) for (const b of bumped) this.firePattern(b, slot);
+    this.track();
+  }
+
+  /** +1 to every standing roost in this roost's pattern. Returns the roosts bumped. */
+  private firePattern(slot: Slot, skip?: Slot): Slot[] {
+    const out: Slot[] = [];
+    for (const t of this.patternTiles(slot.idx, slot.roost!.batId)) {
+      if (!t.roost || t.roost.ruined || t.roost.nursery || t === skip) continue;
+      this.levelUp(t, 1);
+      out.push(t);
     }
-    for (const t of this.patternTiles(slot.idx, slot.roost!.batId)) if (t.roost && !t.roost.ruined) this.levelUp(t, 1);
+    return out;
+  }
+
+  private gain(slot: Slot, n: number) {
+    this.guano += n;
+    this.floats.push({ x: slot.x, y: slot.y + 0.3, text: `+${n} guano`, color: '#d8c27a', t: this.clock });
+  }
+
+  /** Dusk effects from charms and the boss rule. */
+  private duskCharms() {
+    const standing = this.slots.filter((s) => s.roost && !s.roost.ruined && !s.roost.nursery);
+    if (this.charms.has('vanguard')) {
+      const front = standing.filter((s) => s.row === 0);
+      if (front.length) this.levelUp(this.rng.pick(front), 1);
+    }
+    const top = () => standing.reduce<Slot | null>((b, s) => (!b || s.roost!.level > b.roost!.level ? s : b), null);
+    if (this.charms.has('beacon')) {
+      const t = top();
+      if (t) this.firePattern(t);
+    }
+    if (this.cfg.bossRule === 'hawk_eye') {
+      const t = top();
+      if (t && t.roost!.level > 1) {
+        this.levelUp(t, -1, false);
+        this.floats.push({ x: t.x, y: t.y, text: 'Hawk! -1', color: '#ff9a7a', t: this.clock });
+      }
+    }
+  }
+
+  /** Star-goal bookkeeping. */
+  private track() {
+    const rs = this.slots.filter((s) => s.roost && !s.roost.nursery);
+    this.tally.maxRoosts = Math.max(this.tally.maxRoosts, rs.length);
+    for (const s of rs) this.tally.maxLevel = Math.max(this.tally.maxLevel, s.roost!.level);
+  }
+
+  /** Nursery objective: a sturdy roost with no bats on the middle tile of the middle row. */
+  private placeNursery() {
+    const slot = this.slots.find((s) => s.row === 1 && s.col === 2)!;
+    slot.terrain = null;
+    const bp = { ...blueprint('fledgling', undefined), name: 'Nursery' };
+    slot.roost = { batId: 'fledgling', bp, level: 1, hp: 600, maxHp: 600, respawnTimer: 0, ruined: false, glass: [], nursery: true };
   }
 
   batsPerRoost(r: Roost): number {
+    if (r.nursery) return 0;
     if (this.isMega(r)) return 1;
-    return r.bp.roost.count + Math.min(L.maxExtraBats, (r.level - 1) * L.batsPerLevel);
+    return r.bp.roost.count + Math.min(L.maxExtraBats, (r.level - 1) * L.batsPerLevel) + (this.charms.has('big_family') && r.level >= 3 ? 1 : 0);
   }
 
   /** Each roost tops its bats back up, one at a time, on its own cooldown (mega bats: only after death). */
@@ -598,12 +827,12 @@ export class Defense {
   /** What tomorrow's dawn would pay if no roost were wrecked tonight (kills not included). */
   projectedIncome(): number {
     return Math.max(0, E.perDawn + this.mods.guanoPerDawn) + Math.floor(this.housedBats() / E.batsPerGuano) + this.relic.guanoPerDawn
-      + Defense.clanValue('NEC', this.clanStrength());
+      + this.clusterGuano(this.formations());
   }
 
   private dawn() {
     // Income is counted before wrecked roosts are rebuilt.
-    const wreckedIncome = Math.floor(this.housedBats(true) / E.batsPerGuano);
+    const wreckedIncome = this.cfg.bossRule === 'drought' ? 0 : Math.floor(this.housedBats(true) / E.batsPerGuano);
     for (const u of this.units) if (u.side === 'bat') u.dead = true;
     this.units = [];
     this.spawnQueue = [];
@@ -612,16 +841,11 @@ export class Defense {
       const r = slot.roost;
       if (!r?.ruined) continue;
       r.ruined = false;
-      r.hp = Math.round((r.maxHp * BALANCE.rebuildHpPct) / 100);
+      if (this.charms.has('phoenix')) {
+        if (r.level > 1) this.levelUp(slot, -1, false);
+        r.hp = r.maxHp;
+      } else r.hp = Math.round((r.maxHp * BALANCE.rebuildHpPct) / 100);
       this.effects.push({ kind: 'place', x: slot.x, y: slot.y, r: 0.6, t: this.clock });
-    }
-    // Frugivore bonus: the colony patches up every roost.
-    const fruHeal = Defense.clanValue('FRU', this.nightClans);
-    if (fruHeal) {
-      for (const slot of this.slots) {
-        const r = slot.roost;
-        if (r) r.hp = Math.min(r.maxHp, r.hp + (r.maxHp * fruHeal) / 100);
-      }
     }
     for (const slot of this.slots) {
       const r = slot.roost;
@@ -638,12 +862,15 @@ export class Defense {
     this.lastIncomeParts = {
       base: Math.max(0, E.perDawn + this.mods.guanoPerDawn),
       roosts: wreckedIncome,
-      kills: Math.floor(this.kills / this.rule.killsPerGuano),
+      kills: Math.floor(this.kills / this.rule.killsPerGuano) + (this.charms.has('scavenger') ? Math.floor(this.kills / 3) : 0),
       relic: this.relic.guanoPerDawn,
-      clans: Defense.clanValue('NEC', this.nightClans),
+      clans: this.clusterGuano(this.nightFormations),
+      interest: this.interestNow(),
     };
     const p = this.lastIncomeParts;
-    this.lastIncome = p.base + p.roosts + p.kills + p.relic + p.clans;
+    this.lastInterest = p.interest;
+    this.lastIncome = p.base + p.roosts + p.kills + p.relic + p.clans + p.interest;
+    this.freeRerolls = this.charms.has('thrift') ? 1 : 0;
     this.guano += this.lastIncome;
     this.day++;
     this.fillPool();
@@ -653,6 +880,23 @@ export class Defense {
   /** A roost at 0 HP is wrecked for the rest of the night; dawn rebuilds it. */
   private ruinRoost(slot: Slot) {
     const r = slot.roost!;
+    if (r.nursery) {
+      r.ruined = true;
+      r.hp = 0;
+      this.floats.push({ x: slot.x, y: slot.y, text: 'NURSERY LOST', color: '#ff5050', t: this.clock });
+      this.phase = 'lost';
+      return;
+    }
+    // Glass cards in the roost shatter: gone from the deck for good.
+    if (r.glass.length) {
+      this.shattered.push(...r.glass);
+      const gone = new Set(r.glass);
+      this.drawPile = this.drawPile.filter((c) => !gone.has(c.uid));
+      this.discard = this.discard.filter((c) => !gone.has(c.uid));
+      this.pool = this.pool.map((c) => (c && gone.has(c.uid) ? null : c));
+      this.floats.push({ x: slot.x, y: slot.y - 0.2, text: 'GLASS SHATTERS', color: '#c8a8ff', t: this.clock });
+      r.glass = [];
+    }
     r.ruined = true;
     r.hp = 0;
     r.respawnTimer = 0;
@@ -669,10 +913,10 @@ export class Defense {
   private modsFor(slot: Slot): Mods {
     const r = slot.roost!;
     const m: Mods = { atkPct: this.relic.atkPct, hastePct: 0, lifesteal: 0, auraMult: 1 };
-    const clans = BAT_BY_ID[r.batId].clans;
-    if (clans.includes('INS')) m.hastePct += Defense.clanValue('INS', this.nightClans);
-    if (clans.includes('SAN')) m.lifesteal += Defense.clanValue('SAN', this.nightClans);
-    if (clans.includes('PIS')) m.atkPct += Defense.clanValue('PIS', this.nightClans);
+    if (r.glass.length) m.atkPct += this.charms.has('glazier') ? 120 : 60;
+    const f = this.nightSlots.get(slot.idx);
+    if (f?.has('pair')) m.atkPct += this.formationValue('pair');
+    if (f?.has('line')) m.hastePct += this.formationValue('line');
     if (this.terrainMatches(slot.idx, r.batId)) {
       if (slot.terrain === 'pond') m.atkPct += 40;
       if (slot.terrain === 'lamp') m.hastePct += 35;
@@ -723,6 +967,7 @@ export class Defense {
       atk *= group * L.megaAtkMult;
     }
     if (slot.terrain === 'fig' && this.terrainMatches(slot.idx, bp.batId)) hp *= 1.3;
+    if (this.nightSlots.get(slot.idx)?.has('column')) hp *= 1 + this.formationValue('column') / 100;
     this.addUnit({
       side: 'bat', defId: bp.batId, x, y, home: slot.idx, mods: this.modsFor(slot), mega, armored,
       stats: this.toTiles({ ...bp.stats, hp: Math.round(hp), atk: Math.round(atk) }, 'bat'),
@@ -872,7 +1117,8 @@ export class Defense {
       u.aimY = bat.y;
     } else if (roostSlot) {
       const r = roostSlot.roost!;
-      r.hp -= dmg;
+      const shield = this.nightSlots.get(roostSlot.idx)?.has('full_row') ? this.formationValue('full_row') / 100 : 0;
+      r.hp -= dmg * (1 - shield);
       this.floats.push({ x: roostSlot.x, y: roostSlot.y, text: `${Math.round(dmg)}`, color: '#ffb070', t: this.clock });
       if (r.hp <= 0) {
         this.effects.push({ kind: 'death', x: roostSlot.x, y: roostSlot.y, r: 0.6, t: this.clock });
@@ -891,6 +1137,7 @@ export class Defense {
   /** The enemy gets into the cave: one heavy hit, then it's gone. */
   private leak(u: Unit) {
     const dmg = u.stats.atk * BALANCE.night.leakMult;
+    this.tally.leaks++;
     this.cave.hp -= dmg;
     this.floats.push({ x: u.x, y: F.caveY, text: `-${Math.round(dmg)}`, color: '#ff5050', t: this.clock });
     this.effects.push({ kind: 'blast', x: u.x, y: F.caveY, r: 0.4, t: this.clock });

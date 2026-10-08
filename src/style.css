@@ -318,3 +318,38 @@ header.bar .currency { font-size: 13px; gap: 8px; }
 .skill:disabled { opacity: .45; }
 .accent { color: var(--accent); }
 .hc-atk { font-size: 11px; line-height: 1; display: flex; align-items: center; justify-content: center; gap: 2px; }
+
+/* Charms */
+.charm-bar { display: flex; gap: 4px; align-items: center; margin-top: 4px; }
+.charm-slot { width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: 8px; border: 1px dashed #ffffff30; color: #ffffff40; font-size: 16px; padding: 0; }
+.charm-slot.full { border: 1px solid var(--accent); background: var(--panel); color: inherit; }
+.charm-card { display: grid; grid-template-columns: 40px 1fr auto; gap: 8px; align-items: center; background: var(--panel); border: 1px solid #ffffff22; border-radius: 10px; padding: 8px; margin: 6px 0; }
+.charm-card.r-uncommon { border-color: #4fa3ff; }
+.charm-card.r-rare { border-color: #ffc23d; }
+.charm-card.chart { border-color: #b56cff; }
+.cc-icon { font-size: 26px; text-align: center; }
+.clan-chip.boss { color: #ff9a7a; border-color: #ff9a7a; opacity: 1; }
+.clan-chip.charm { padding: 2px 5px; font-size: 13px; opacity: 1; }
+.mod-badge { position: absolute; top: -6px; right: -4px; font-size: 13px; }
+.cf-mod { font-size: 12px; color: #c8a8ff; }
+.interest { color: #9ae8ff; }
+
+/* Saga */
+.saga-path { display: flex; flex-direction: column; gap: 10px; padding: 10px 0 30px; }
+.saga-row { display: flex; align-items: center; gap: 12px; }
+.saga-row.r { flex-direction: row-reverse; text-align: right; }
+.saga-row.l { padding-left: 8%; }
+.saga-row.r { padding-right: 8%; }
+.saga-node { width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; align-content: center; gap: 2px;
+  background: radial-gradient(circle at 35% 30%, #5a4a8a, #2a2050); border: 3px solid #7a6ab0; flex: 0 0 auto; padding: 0; }
+.saga-node.done { border-color: #62e27a; }
+.saga-node.current { border-color: var(--accent); box-shadow: 0 0 0 4px #ffc23d33; animation: pulse 1.4s infinite; }
+.saga-node.locked { filter: grayscale(1) brightness(.5); }
+.sn-n { font-size: 22px; font-weight: 900; }
+.sn-stars { font-size: 11px; color: var(--accent); letter-spacing: 1px; }
+.saga-label { min-width: 0; }
+.node-card { background: var(--panel); border: 1px solid var(--accent); border-radius: 12px; padding: 10px 12px; margin: 8px 0; display: grid; gap: 6px; }
+.nc-head { display: flex; justify-content: space-between; }
+.nc-stars { color: var(--accent); }
+.nc-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.big-stars { font-size: 34px; color: var(--accent); letter-spacing: 4px; margin: 4px 0; }
