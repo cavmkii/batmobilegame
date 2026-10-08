@@ -247,12 +247,6 @@ registerScreen('battle', (app) => {
     if (!c) return;
     pending = null;
     const s: Sel = { kind: 'pool', i };
-    if (c.kind === 'spell' && same(sel, s)) {
-      if (d.takeSpell(i)) note = `${SPELL_BY_ID[c.id].name} added to your spells.`;
-      else note = d.phase !== 'day' ? 'Take spells during the day.' : `You can hold at most ${BALANCE.economy.spellHandMax} spells.`;
-      sel = null;
-      return;
-    }
     sel = same(sel, s) ? null : s;
     note = '';
     if (sel && c.kind === 'bat') onTutorial('select');
@@ -379,11 +373,10 @@ registerScreen('battle', (app) => {
       h('div.row-label', 'pool'),
       ...d.pool.map((c, i) => cardEl({
         card: c, sel: { kind: 'pool', i }, onTap: () => onPool(i),
-        playable: !!c && isDay && (c.kind === 'spell' ? d.canTakeSpell(i) : d.guano >= d.cardCost(c)),
-        tag: c?.kind === 'spell' ? 'take' : undefined,
+        playable: !!c && isDay && d.guano >= d.cardCost(c),
       })),
       refreshBtn,
-      d.spells.length ? h('div.row-label', 'spells') : '',
+      d.spells.length || d.spellsLeft ? h('div.row-label', `spells${d.spellsLeft ? ` +${d.spellsLeft}` : ''}`) : '',
       ...d.spells.map((c, i) => cardEl({ card: c, sel: { kind: 'spell', i }, onTap: () => onSpell(i), playable: d.canCast(i), tag: 'instant' })),
     );
 
@@ -400,9 +393,7 @@ registerScreen('battle', (app) => {
     if (!text && sel) {
       if (sel.kind === 'pool') {
         const c = d.pool[sel.i];
-        if (c) text = c.kind === 'bat'
-          ? describeBat(c.id, isSharp(c))
-          : `${SPELL_BY_ID[c.id].name}: ${SPELL_BY_ID[c.id].desc} Tap again to take it (free); casting costs ${d.cardCost(c)} guano.`;
+        if (c) text = describeBat(c.id, isSharp(c));
       } else if (sel.kind === 'spell') {
         const c = d.spells[sel.i];
         if (c) text = `${SPELL_BY_ID[c.id].name}: ${SPELL_BY_ID[c.id].desc} ${d.canCast(sel.i) ? 'Tap again to cast.' : d.phase === 'day' ? 'Cast it at night.' : 'Not enough guano.'}`;

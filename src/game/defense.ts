@@ -147,8 +147,10 @@ export class Defense {
   guano: number;
   /** The visible offers (null = used, waiting for a refresh or dawn). */
   pool: (Card | null)[];
-  /** Spells taken from the pool, castable as instants. */
+  /** The spell hand: castable as instants. Spells never enter the pool. */
   spells: Card[] = [];
+  private spellPile: Card[] = [];
+  private spellDiscard: Card[] = [];
   drawPile: Card[];
   discard: Card[] = [];
   slots: Slot[] = [];
@@ -232,7 +234,9 @@ export class Defense {
 
     this.slots = this.makeSlots();
     this.plans = Array.from({ length: this.nights }, (_, i) => this.planNight(i + 1));
-    this.drawPile = this.rng.shuffle([...cfg.deck]);
+    this.drawPile = this.rng.shuffle(cfg.deck.filter((c) => c.kind === 'bat'));
+    this.spellPile = this.rng.shuffle(cfg.deck.filter((c) => c.kind === 'spell'));
+    this.drawSpells(BALANCE.spells.startHand);
     const poolSize = E.poolSize + this.rule.poolExtra + (this.charms.has('deep_pockets') ? 1 : 0) - (cfg.bossRule === 'storm' ? 1 : 0);
     this.pool = Array.from({ length: Math.max(1, poolSize) }, () => null);
     if (cfg.objective === 'nursery') this.placeNursery();
@@ -400,11 +404,6 @@ export class Defense {
     return this.slots.filter((s) => this.canMerge(fromIdx, s.idx));
   }
 
-  canTakeSpell(i: number): boolean {
-    const c = this.pool[i];
-    return this.phase === 'day' && !!c && c.kind === 'spell' && this.spells.length < E.spellHandMax;
-  }
-
   canRefresh(): boolean {
     return this.phase === 'day' && this.guano >= this.refreshCost && this.drawPile.length + this.discard.length + this.pool.filter(Boolean).length > 0;
   }
@@ -514,11 +513,21 @@ export class Defense {
     return true;
   }
 
-  takeSpell(i: number): boolean {
-    if (!this.canTakeSpell(i)) return false;
-    this.spells.push(this.pool[i]!);
-    this.pool[i] = null;
-    return true;
+  /** Draw spells into the hand, up to the hand limit (the spell discard reshuffles when needed). */
+  private drawSpells(n: number) {
+    for (let k = 0; k < n && this.spells.length < E.spellHandMax; k++) {
+      if (!this.spellPile.length) {
+        if (!this.spellDiscard.length) return;
+        this.spellPile = this.rng.shuffle(this.spellDiscard);
+        this.spellDiscard = [];
+      }
+      this.spells.push(this.spellPile.shift()!);
+    }
+  }
+
+  /** Spells left to draw this level (pile + discard), for the UI. */
+  get spellsLeft(): number {
+    return this.spellPile.length + this.spellDiscard.length;
   }
 
   /** Discard what's showing and draw a fresh pool. */
@@ -540,7 +549,7 @@ export class Defense {
     const card = this.spells.splice(i, 1)[0];
     this.guano -= this.cardCost(card);
     this.castSpell(SPELL_BY_ID[card.id].effect, isSharp(card));
-    this.discard.push(card);
+    this.spellDiscard.push(card);
     return true;
   }
 
@@ -892,6 +901,7 @@ export class Defense {
     this.guano += this.lastIncome;
     this.day++;
     this.fillPool();
+    this.drawSpells(BALANCE.spells.perDawn);
     this.phase = 'day';
   }
 

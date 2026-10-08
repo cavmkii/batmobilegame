@@ -11,6 +11,8 @@ export const BALANCE = {
    * Roosts are the economy: early on it's a grind; investing in bats raises income, spells and rerolls don't.
    */
   economy: { startGuano: 6, perDawn: 2, batsPerGuano: 2, refreshCost: 2, poolSize: 2, spellHandMax: 3 },
+  /** Spells live in their own hand, not the pool: draw `startHand` at the start of a level, +1 each dawn. */
+  spells: { startHand: 2, perDawn: 1 },
   /** Unspent guano earns interest at dawn: +1 per `per`, up to `cap` (Balatro-style). */
   interest: { per: 5, cap: 3 },
   /**

@@ -51,7 +51,6 @@ export function botDay(d: Defense) {
     for (let i = 0; i < d.pool.length; i++) {
       const c = d.pool[i];
       if (!c) continue;
-      if (c.kind === 'spell') { d.takeSpell(i); continue; }
       const stack = d.slots.find((s) => d.canStackOn(s, c.id));
       const target = stack ? stack.idx : bestEmpty(c.id);
       if (target >= 0) d.place(i, target);
@@ -137,10 +136,11 @@ describe('pool and guano', () => {
     expect(d.pool.some((c) => c?.id === first)).toBe(true);
   });
 
-  it('takes spells into a hand and casts them as instants at night', () => {
-    const d = new Defense(cfg({ deck: deckOf('guano_bomb', 'ripe_harvest') }));
-    const bomb = d.pool.findIndex((c) => c?.id === 'guano_bomb');
-    expect(d.takeSpell(bomb)).toBe(true);
+  it('keeps spells out of the pool, in their own hand, cast as instants at night', () => {
+    const d = new Defense(cfg({ deck: deckOf('guano_bomb', 'screech', 'night_fog', 'little_brown', 'fledgling') }));
+    expect(d.pool.every((c) => !c || c.kind === 'bat')).toBe(true);
+    expect(d.spells.length).toBe(BALANCE.spells.startHand);
+    expect(d.spellsLeft).toBe(1);
     expect(d.canCast(0)).toBe(false); // nothing to hit by day
     d.endDay();
     for (let i = 0; i < 60 * 4; i++) d.step(1 / 60);
