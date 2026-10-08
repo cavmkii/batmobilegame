@@ -1,7 +1,8 @@
 import { BALANCE } from '../data/balance';
-import { BATS, BAT_BY_ID, STARTER_COMMANDERS } from '../data/bats';
-import { CLANS, CLAN_ORDER, RARITY_COLOR } from '../data/clans';
-import { identityOf, legalCoreBats, validateCore } from '../game/deck';
+import { BATS, BAT_BY_ID, STARTER_COMMONS, STARTER_MATRIARCHS } from '../data/bats';
+import { CLANS, CLAN_ORDER, RARITY_COLOR, SYNERGY, SYNERGY_TIERS } from '../data/clans';
+import { MATRIARCH_BY_ID, MATRIARCH_GUANO_EVERY, matriarchGuano } from '../data/matriarchs';
+import { flockOptions, validateSetup } from '../game/deck';
 import { canTakePlus, pull, resolveDupe, type PullResult } from '../game/gacha';
 import { chooseStarter, exportSave, importSave, resetProfile } from '../game/profile';
 import {
@@ -23,8 +24,9 @@ const wallet = (app: App) => currencyBar([['✨', app.profile.xp], ['🪲', app.
 // ---------------- Starter ----------------
 
 registerScreen('starter', (app) => {
-  const cards = STARTER_COMMANDERS.map((id) => {
+  const cards = STARTER_MATRIARCHS.map((id) => {
     const def = BAT_BY_ID[id];
+    const m = MATRIARCH_BY_ID[id];
     return h('button.starter', {
       onclick: () => {
         chooseStarter(app.profile, id);
@@ -33,13 +35,13 @@ registerScreen('starter', (app) => {
       },
     },
     batImg(id, 3),
-    h('div.cf-name', def.name), clanPips(def.clans),
-    h('div.muted', def.clans.map((c) => CLANS[c].name).join(' / ')),
-    h('div.small', def.traits.map(describeTrait).join(' · ')),
+    h('div.cf-name', def.name),
+    h('div.mat-title', `♛ ${m.title}`),
+    h('div.small', m.rule),
     );
   });
   return h('div.screen',
-    h('div.hero', h('h1.title', 'BATMOBILE'), h('p', 'Choose your first commander. The others can be found in the Summon cave.')),
+    h('div.hero', h('h1.title', 'BATMOBILE'), h('p', 'Choose the matriarch who leads your colony. Each one bends one rule of the game. More can be found in the Summon cave.')),
     h('div.starter-row', ...cards),
     h('p.muted.center', 'You also start with one common bat from every clan and enough Glowbugs for a ten-pull.'),
   );
@@ -55,7 +57,7 @@ registerScreen('home', (app) => {
     h('div.hero', h('h1.title', 'BATMOBILE'), wallet(app)),
     h('div.menu',
       h('button.big.primary.main-btn', { onclick: () => app.go({ name: p.run ? 'map' : 'prep' }) },
-        h('span.mb-icon', '▶'), h('span', p.run ? 'Continue run' : 'Play'), h('span.mb-sub', p.run ? 'A run is in progress' : 'Choose commander, deck, map and modifiers')),
+        h('span.mb-icon', '▶'), h('span', p.run ? 'Continue run' : 'Play'), h('span.mb-sub', p.run ? 'A run is in progress' : 'Choose matriarch, flock, map and modifiers')),
       h('button.big.main-btn', { onclick: () => app.go({ name: 'guides' }) },
         h('span.mb-icon', '📖'), h('span', 'Field Guides'), h('span.mb-sub', `Bats ${owned}/${total}`),
         claimable(p).length ? h('span.badge', claimable(p).length) : null),
@@ -152,8 +154,8 @@ registerScreen('roster', (app) => {
   const ready = claimable(p);
 
   const sections = guideView === 'clan'
-    ? [...CLAN_ORDER.map((c) => ({ title: CLANS[c].name, color: CLANS[c].color, ids: BATS.filter((b) => !b.commander && !b.basic && b.clans[0] === c).map((b) => b.id), set: null as Reward | null })),
-      { title: 'Commanders', color: RARITY_COLOR.legendary, ids: BATS.filter((b) => b.commander).map((b) => b.id), set: null as Reward | null }]
+    ? [...CLAN_ORDER.map((c) => ({ title: CLANS[c].name, color: CLANS[c].color, ids: BATS.filter((b) => !b.matriarch && !b.basic && b.clans[0] === c).map((b) => b.id), set: null as Reward | null })),
+      { title: 'Matriarchs', color: RARITY_COLOR.legendary, ids: BATS.filter((b) => b.matriarch).map((b) => b.id), set: null as Reward | null }]
     : REGIONS.map((r, i) => ({ title: `${REGION_ICON[r]} ${r}`, color: 'var(--text)', ids: regionMembers(r), set: REGION_SETS[i] as Reward | null }));
 
   return h('div.screen',
@@ -247,18 +249,20 @@ registerScreen('bat', (app, s) => {
         REGION[s.id] ? h('div.small', `${REGION_ICON[REGION[s.id]]} ${REGION[s.id]}`) : null,
         STATUS[s.id] ? h('div.small.status', `⚠ ${STATUS[s.id]}`) : null,
         h('div', clanPips(def.clans), ' ', def.clans.map((c) => CLANS[c].name).join(' / ') || 'Colorless'),
-        def.commander ? h('div.tag', 'Commander') : null,
+        def.matriarch ? h('div.tag', `♛ Matriarch: ${MATRIARCH_BY_ID[s.id].title}`) : null,
         h('div.big-level', `Lv ${o.level}`, o.plus ? h('span.plus', `+${o.plus}`) : null, h('span.muted', ` / ${levelCap(o)}`)),
       ),
     ),
-    h('table.stats-table',
+    def.matriarch ? null : h('table.stats-table',
       h('tr', h('td', 'Cost'), h('td', bp.cost), h('td', 'HP'), h('td', fmt(bp.stats.hp))),
       h('tr', h('td', 'Attack'), h('td', fmt(bp.stats.atk)), h('td', 'Range'), h('td', bp.stats.range)),
       h('tr', h('td', 'Rate'), h('td', `${bp.stats.rate}s`), h('td', 'Speed'), h('td', Math.round(bp.stats.speed))),
       h('tr', h('td', 'Roost HP'), h('td', fmt(bp.roost.hp)), h('td', 'Max bats'), h('td', bp.roost.count)),
       h('tr', h('td', 'Refill'), h('td', `${bp.roost.respawn}s`), h('td', 'Spread'), h('td', patternGrid(s.id, 'xs'))),
     ),
-    bp.traits.length ? h('ul.traits', ...bp.traits.map((t) => h('li', describeTrait(t)))) : null,
+    def.matriarch ? h('p', h('b', MATRIARCH_BY_ID[s.id].rule), ' ', h('span.muted', MATRIARCH_BY_ID[s.id].why)) : null,
+    def.matriarch ? h('p.small', `Matriarchs don't fight. Every ${MATRIARCH_GUANO_EVERY} levels she adds +1 starting guano to each level of a run she leads (now +${matriarchGuano(o.level, o.plus)}).`) : null,
+    bp.traits.length && !def.matriarch ? h('ul.traits', ...bp.traits.map((t) => h('li', describeTrait(t)))) : null,
     h('p.fact', '🦇 ', def.fact),
     h('div.actions',
       h('button.primary', { disabled: atCap || !canLevelUp(def, o, p.xp), onclick: act(() => { p.xp -= lvlCost; o.level++; }) },
@@ -333,50 +337,53 @@ registerScreen('summon', (app) => {
   );
 });
 
-// ---------------- Run prep: commander + core ----------------
+// ---------------- Run prep: matriarch + starting flock ----------------
 
 registerScreen('prep', (app) => {
   const p = app.profile;
-  const commanders = Object.keys(p.roster).filter((id) => BAT_BY_ID[id].commander);
-  let cmd = p.lastCommander && p.roster[p.lastCommander] ? p.lastCommander : commanders[0];
-  let core: string[] = [];
+  const matriarchs = Object.keys(p.roster).filter((id) => BAT_BY_ID[id]?.matriarch && MATRIARCH_BY_ID[id]);
+  let mat = p.lastMatriarch && matriarchs.includes(p.lastMatriarch) ? p.lastMatriarch : matriarchs[0];
+  const options = flockOptions(p).sort((a, b) => rank(a) - rank(b));
+  const F = BALANCE.run.flock;
+  let flock = (p.flock ?? []).filter((id) => options.includes(id)).slice(0, F.species);
+  if (!p.flock) flock = options.slice(0, F.species);
   let biome = p.lastSetup?.biome ?? BIOMES[0].id;
   let mods: string[] = [...(p.lastSetup?.modifiers ?? [])];
 
   const body = h('div');
-  const draw = () => {
-    const legal = legalCoreBats(p, cmd);
-    core = (p.cores[cmd] ?? legal).filter((id) => legal.includes(id)).slice(0, BALANCE.run.coreMax);
-    p.cores[cmd] = core;
-    render();
-  };
   const render = () => {
-    const legal = legalCoreBats(p, cmd);
-    const err = validateCore(p, cmd, core);
-    const fledglings = Math.max(0, BALANCE.run.startDeckSize - core.length);
+    const err = validateSetup(p, mat, flock);
+    const m = MATRIARCH_BY_ID[mat];
+    const fledglings = F.species * F.copies + F.fledglings - flock.length * F.copies;
     body.replaceChildren(
-      !p.tutorialDone ? h('div.coach', h('div.coach-step', 'First run'), h('div', 'Your commander and starting deck are already picked. Choose any map, leave modifiers off for now, and tap Begin run at the bottom.')) : '',
-      h('h2', 'Commander'),
-      h('div.commander-row', ...commanders.map((id) => h(`button.cmd-pick${id === cmd ? '.selected' : ''}`, {
-        onclick: () => { cmd = id; draw(); },
-      }, batImg(id, 2), h('div.small', displayName(BAT_BY_ID[id], p.roster[id])), clanPips(BAT_BY_ID[id].clans)))),
-      h('p.muted.small', 'Identity: ', identityOf(cmd).map((c) => CLANS[c].name).join(' + '),
-        '. Only bats and spells within this identity (or colorless) can join the deck.'),
-      h('h2', `Deck: core ${core.length}/${BALANCE.run.coreMax}`),
-      legal.length ? h('div.core-grid', ...legal.map((id) => {
-        const on = core.includes(id);
+      !p.tutorialDone ? h('div.coach', h('div.coach-step', 'First run'), h('div', 'Your matriarch and starting flock are already picked. Choose any map, leave modifiers off for now, and tap Begin run at the bottom.')) : '',
+      h('h2', 'Matriarch'),
+      h('div.commander-row', ...matriarchs.map((id) => h(`button.cmd-pick${id === mat ? '.selected' : ''}`, {
+        onclick: () => { mat = id; render(); },
+      }, batImg(id, 2), h('div.small', BAT_BY_ID[id].name), h('div.small.mat-title', MATRIARCH_BY_ID[id].title)))),
+      m ? h('p.small', h('b', `♛ ${m.title}: `), m.rule, ' ', h('span.muted', m.why)) : '',
+      h('h2', `Starting flock ${flock.length}/${F.species}`),
+      h('p.muted.small', `Pick ${F.species} species. You start with ${F.copies} of each, so they can merge from the first day. Drafts after each level offer more copies or new species.`),
+      h('div.core-grid', ...options.map((id) => {
+        const on = flock.includes(id);
         const o = p.roster[id];
         return h(`button.core-pick${on ? '.selected' : ''}`, {
           onclick: () => {
-            if (on) core = core.filter((x) => x !== id);
-            else if (core.length < BALANCE.run.coreMax) core = [...core, id];
-            else return toast(`Core is limited to ${BALANCE.run.coreMax}`);
-            p.cores[cmd] = core;
+            if (on) flock = flock.filter((x) => x !== id);
+            else if (flock.length < F.species) flock = [...flock, id];
+            else return toast(`Pick up to ${F.species} species. Tap one to remove it first.`);
+            p.flock = flock;
             render();
           },
         }, batImg(id, 2), h('div.small', displayName(BAT_BY_ID[id], o)), h('div.muted.small', `Lv ${o.level}${o.plus ? `+${o.plus}` : ''}`), clanPips(BAT_BY_ID[id].clans));
-      })) : h('p.muted', 'No owned bats match this identity yet. Summon more, or start with Fledglings.'),
-      h('p.muted.small', `Starting deck: ${core.length} core + ${fledglings} Fledgling${fledglings === 1 ? '' : 's'}. Draft up to ${BALANCE.run.deckCap} cards during the run.`),
+      })),
+      h('p.muted.small', `Starting deck: ${flock.map((id) => `${F.copies}× ${BAT_BY_ID[id].name}`).join(', ') || 'no species'}, ${fledglings} Fledgling${fledglings === 1 ? '' : 's'}. Up to ${BALANCE.run.deckCap} cards.`),
+      h('details.clan-ref',
+        h('summary', 'Clan bonuses'),
+        h('p.muted.small', `On the field, each clan adds up its roosts' levels. At ${SYNERGY_TIERS.join(', ')} it unlocks a bonus. Mixing clans is allowed; committing pays off.`),
+        ...CLAN_ORDER.map((c) => h('div.small', h('b', { style: `color:${CLANS[c].color}` }, CLANS[c].name), ': ',
+          SYNERGY[c].values.map((v) => SYNERGY[c].text(v)).join(' → '))),
+      ),
       h('h2', 'Map'),
       h('div.choice-list', ...BIOMES.map((b) => h(`button.choice${b.id === biome ? '.selected' : ''}`, {
         onclick: () => { biome = b.id; render(); },
@@ -393,13 +400,20 @@ registerScreen('prep', (app) => {
       h('button.big.primary', {
         disabled: !!err,
         onclick: () => {
-          p.run = startRun(p, cmd, core, newSeed(), { biome, modifiers: mods });
+          p.run = startRun(p, mat, flock, newSeed(), { biome, modifiers: mods });
           app.save();
           app.go({ name: 'map' });
         },
       }, 'Begin run', rewardBonusPct(mods) ? h('div.small', `Rewards +${rewardBonusPct(mods)}%`) : null),
     );
   };
-  draw();
+  render();
   return h('div.screen', header('Play', () => app.go({ name: 'home' })), body);
 });
+
+/** Starter commons first (in clan order), then the rest by rarity. */
+function rank(id: string): number {
+  const i = STARTER_COMMONS.indexOf(id);
+  if (i >= 0) return i;
+  return 10 + ['common', 'rare', 'epic', 'legendary'].indexOf(BAT_BY_ID[id].rarity);
+}

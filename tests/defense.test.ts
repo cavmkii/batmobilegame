@@ -16,7 +16,7 @@ function cfg(over: Partial<DefenseConfig> = {}): DefenseConfig {
     encounterId: 'moth_cloud',
     row: 0,
     deck: buildStartingDeck(['little_brown', 'common_vampire']),
-    commanderId: 'ghost_bat',
+    matriarchId: 'ghost_bat',
     roster: roster(['ghost_bat', 'little_brown', 'common_vampire', 'fledgling']),
     relics: [],
     caveHp: 1000,
@@ -33,7 +33,7 @@ const runNight = (d: Defense) => {
 const deckOf = (...ids: string[]) => ids.map((id) => newCard(SPELL_BY_ID[id] ? 'spell' : 'bat', id));
 
 /**
- * A simple player. Commander first; then for each pool card: stack it onto its roost if one
+ * A simple player. For each pool card: stack it onto its roost if one
  * exists, else roost it in a column tonight's enemies use (front rows, terrain first).
  * Takes spells. Refreshes when the pool has nothing it can use. Casts spells when enemies get close.
  */
@@ -48,10 +48,6 @@ export function botDay(d: Defense) {
     for (const s of d.slots) if (!s.roost && (best < 0 || score(s.idx, batId) > score(best, batId))) best = s.idx;
     return best;
   };
-  if (!d.commander.inPlay) {
-    const s = bestEmpty(d.commander.bp.batId);
-    if (s >= 0) d.place('cmd', s);
-  }
   for (let refreshes = 0; refreshes < 3; refreshes++) {
     for (let i = 0; i < d.pool.length; i++) {
       const c = d.pool[i];
@@ -157,7 +153,7 @@ describe('roost levels', () => {
   const stackDeck = () => deckOf('egyptian_fruit', 'egyptian_fruit', 'egyptian_fruit', 'egyptian_fruit');
 
   it('a pool card merges only onto a level-1 roost of the same bat', () => {
-    const d = new Defense(cfg({ commanderId: 'flying_fox', roster: roster(['flying_fox', 'egyptian_fruit', 'pallas_tongue']), deck: stackDeck() }));
+    const d = new Defense(cfg({ matriarchId: 'ghost_bat', roster: roster(['egyptian_fruit', 'pallas_tongue']), deck: stackDeck() }));
     d.guano = 99;
     d.place(0, 7);
     expect(d.canPlace(1, 7)).toBe(true);
@@ -170,23 +166,24 @@ describe('roost levels', () => {
 
   it('two roosts merge only at the same level, freeing a tile and firing the pattern', () => {
     // Egyptian Fruit Bat pattern: the tile to its right.
-    const d = new Defense(cfg({ commanderId: 'flying_fox', roster: roster(['flying_fox', 'egyptian_fruit']), deck: stackDeck() }));
+    const d = new Defense(cfg({ matriarchId: 'ghost_bat', roster: roster(['egyptian_fruit']), deck: stackDeck() }));
     d.guano = 99;
     d.place(0, 5);
     d.place(1, 6);
     d.slots[5].roost!.level = 2;
     expect(d.canMerge(6, 5)).toBe(false); // levels 1 and 2
     d.slots[6].roost!.level = 2;
-    d.place('cmd', 7); // right of tile 6
+    d.refresh();
+    d.place(0, 7); // right of tile 6
     expect(d.merge(5, 6)).toBe(true);
     expect(d.slots[5].roost).toBeNull();
     expect(d.slots[6].roost!.level).toBe(3);
-    expect(d.slots[7].roost!.level).toBe(2); // pattern bump on the commander
-    expect(d.canMerge(7, 6)).toBe(false); // commanders never merge
+    expect(d.slots[7].roost!.level).toBe(2); // pattern bump
+    expect(d.canMerge(7, 6)).toBe(false); // levels 2 and 3
   });
 
   it('each level adds a bat, up to the cap', () => {
-    const d = new Defense(cfg({ deck: stackDeck(), commanderId: 'flying_fox', roster: roster(['flying_fox', 'egyptian_fruit']) }));
+    const d = new Defense(cfg({ deck: stackDeck(), matriarchId: 'ghost_bat', roster: roster(['egyptian_fruit']) }));
     d.place(0, 7);
     const r = d.slots[7].roost!;
     const base = BAT_BY_ID.egyptian_fruit.roost.count;
@@ -199,11 +196,12 @@ describe('roost levels', () => {
 
   it('a stack also levels the roosts in the bat pattern, without chaining', () => {
     // Egyptian Fruit Bat pattern: the tile to its right.
-    const d = new Defense(cfg({ commanderId: 'flying_fox', roster: roster(['flying_fox', 'egyptian_fruit']), deck: stackDeck() }));
+    const d = new Defense(cfg({ matriarchId: 'ghost_bat', roster: roster(['egyptian_fruit']), deck: stackDeck() }));
     d.guano = 99;
-    d.place('cmd', 8); // commander to the right of tile 7
-    d.place(0, 7);
+    d.place(0, 8); // to the right of tile 7
     d.place(1, 7);
+    d.refresh();
+    d.place(0, 7);
     expect(d.slots[7].roost!.level).toBe(2);
     expect(d.slots[8].roost!.level).toBe(2);
     expect(d.slots[9].roost).toBeNull();
@@ -274,25 +272,6 @@ describe('defense rules', () => {
     expect(r.hp).toBe(Math.round((r.maxHp * BALANCE.rebuildHpPct) / 100));
   });
 
-  it('a destroyed commander returns to the command zone and costs more each time it is placed', () => {
-    const d = new Defense(cfg({ caveHp: 1e9, caveMax: 1e9 }));
-    d.guano = 99;
-    const base = d.commanderCost();
-    expect(d.place('cmd', 2)).toBe(true);
-    expect(d.commanderCost()).toBe(base + BALANCE.commander.tax);
-    wreck(d, 2);
-    expect(d.slots[2].roost).toBeNull();
-    expect(d.commander.inPlay).toBe(false);
-    finishNight(d);
-    expect(d.slots[2].roost).toBeNull(); // not rebuilt like other roosts
-    d.guano = 99;
-    const g = d.guano;
-    expect(d.place('cmd', 3)).toBe(true);
-    expect(g - d.guano).toBe(base + BALANCE.commander.tax);
-    expect(d.slots[3].roost!.level).toBe(1);
-    expect(d.commanderCost()).toBe(base + 2 * BALANCE.commander.tax);
-  });
-
   it('gives terrain bonuses only to the matching clan', () => {
     const d = new Defense(cfg());
     const pen = d.slots.find((s) => s.terrain === 'pen');
@@ -318,7 +297,7 @@ describe('defense rules', () => {
     expect(d.phase).toBe('lost');
   });
 
-  it('enemies rush the cave once nothing blocks their column', () => {
+  it('enemies keep walking speed through the roost zone with nothing blocking', () => {
     const d = new Defense(cfg({ caveHp: 1e9, caveMax: 1e9 }));
     d.endDay();
     (d as unknown as { spawnEnemy(id: string, x: number): void }).spawnEnemy('beetle', 0.5);
@@ -326,22 +305,106 @@ describe('defense rules', () => {
     beetle.y = BALANCE.field.roostTopY;
     const y0 = beetle.y;
     d.step(0.5);
-    expect((beetle.y - y0) / 0.5).toBeCloseTo(beetle.stats.speed * BALANCE.night.rushMult, 1);
+    expect((beetle.y - y0) / 0.5).toBeCloseTo(beetle.stats.speed, 1);
+  });
+});
+
+describe('matriarchs', () => {
+  const two = (id: string) => deckOf(id, id, id, id);
+
+  it('Seed Spreader refunds guano on every merge', () => {
+    const d = new Defense(cfg({ matriarchId: 'flying_fox', roster: roster(['flying_fox', 'egyptian_fruit']), deck: two('egyptian_fruit') }));
+    d.guano = 20;
+    d.place(0, 7);
+    const g = d.guano;
+    d.place(1, 7);
+    expect(d.guano).toBe(g - BAT_BY_ID.egyptian_fruit.cost + 1);
+  });
+
+  it('Pair Bond merges into a roost one level higher, not two', () => {
+    const d = new Defense(cfg({ matriarchId: 'spectral_bat', roster: roster(['spectral_bat', 'egyptian_fruit']), deck: two('egyptian_fruit') }));
+    d.guano = 99;
+    d.place(0, 5);
+    d.place(1, 10);
+    d.slots[5].roost!.level = 2;
+    expect(d.canMerge(10, 5)).toBe(true); // 1 into 2
+    expect(d.canMerge(5, 10)).toBe(false); // never downward
+    d.slots[5].roost!.level = 3;
+    expect(d.canMerge(10, 5)).toBe(false); // 1 into 3
+    const plain = new Defense(cfg({ deck: two('egyptian_fruit'), roster: roster(['ghost_bat', 'egyptian_fruit']) }));
+    plain.guano = 99;
+    plain.place(0, 5);
+    plain.place(1, 10);
+    plain.slots[5].roost!.level = 2;
+    expect(plain.canMerge(10, 5)).toBe(false);
+  });
+
+  it('Long Range shows three cards and Feeding Roost pays more for kills', () => {
+    const n = new Defense(cfg({ matriarchId: 'greater_noctule', roster: roster(['greater_noctule', 'little_brown']), deck: two('little_brown') }));
+    expect(n.pool.length).toBe(BALANCE.economy.poolSize + 1);
+    const g = new Defense(cfg());
+    expect(g.rule.killsPerGuano).toBe(2);
+  });
+
+  it('a levelled matriarch adds starting guano', () => {
+    const lv1 = new Defense(cfg()).guano;
+    const lv7 = new Defense(cfg({ roster: { ...roster(['little_brown', 'common_vampire', 'fledgling']), ghost_bat: { ...newOwnedBat(), level: 7 } } })).guano;
+    expect(lv7).toBe(lv1 + 2);
+  });
+});
+
+describe('clan bonuses', () => {
+  it('sums standing roost levels per clan, counting dual-clan bats for both', () => {
+    const d = new Defense(cfg({ deck: deckOf('little_brown', 'common_vampire'), caveHp: 1e9, caveMax: 1e9 }));
+    d.guano = 99;
+    d.place(d.pool.findIndex((c) => c?.id === 'little_brown'), 7);
+    d.place(d.pool.findIndex((c) => c?.id === 'common_vampire'), 8);
+    d.slots[7].roost!.level = 4;
+    let cs = d.clanStrength();
+    expect(cs.INS).toEqual({ levels: 4, tier: 1 });
+    expect(cs.SAN).toEqual({ levels: 1, tier: 0 });
+    d.slots[7].roost!.level = 6;
+    cs = d.clanStrength();
+    expect(cs.INS.tier).toBe(2);
+    d.slots[7].roost!.ruined = true;
+    expect(d.clanStrength().INS.levels).toBe(0);
+  });
+
+  it('locks in at dusk and gives insectivores attack speed', () => {
+    const d = new Defense(cfg({ deck: deckOf('little_brown', 'common_vampire'), caveHp: 1e9, caveMax: 1e9 }));
+    d.guano = 99;
+    d.place(d.pool.findIndex((c) => c?.id === 'little_brown'), 7);
+    d.slots[7].roost!.level = 3;
+    d.endDay();
+    expect(d.nightClans.INS.tier).toBe(1);
+    for (let k = 0; k < 60 * (BAT_BY_ID.little_brown.roost.respawn + 0.1); k++) d.step(1 / 60);
+    const bat = d.units.find((u) => u.side === 'bat' && u.home === 7)!;
+    expect(bat.mods.hastePct).toBe(15);
+  });
+
+  it('nectarivores add dawn guano', () => {
+    const d = new Defense(cfg({ deck: deckOf('pallas_tongue', 'fledgling'), roster: roster(['ghost_bat', 'pallas_tongue', 'fledgling']) }));
+    d.guano = 99;
+    const before = d.projectedIncome();
+    d.place(d.pool.findIndex((c) => c?.id === 'pallas_tongue'), 7);
+    const bats = BAT_BY_ID.pallas_tongue.roost.count;
+    expect(d.projectedIncome()).toBe(before + Math.floor(bats / BALANCE.economy.batsPerGuano));
+    d.slots[7].roost!.level = 3;
+    expect(d.projectedIncome()).toBe(before + Math.floor(d.batsPerRoost(d.slots[7].roost!) / BALANCE.economy.batsPerGuano) + 1);
   });
 });
 
 /** Balance report. Run: npx vitest run tests/defense.test.ts -t balance --reporter=verbose */
 describe('balance smoke', () => {
-  const decks: Record<string, { cmd: string; core: string[]; extra: Card[]; level: number }> = {
-    'ghost starter L1': { cmd: 'ghost_bat', core: ['little_brown', 'common_vampire'], extra: [], level: 1 },
-    'fox starter L1': { cmd: 'flying_fox', core: ['egyptian_fruit', 'pallas_tongue'], extra: [], level: 1 },
-    'fox drafted L1': { cmd: 'flying_fox', core: ['egyptian_fruit', 'pallas_tongue'], level: 1,
-      extra: [newCard('bat', 'straw_fruit', true), newCard('bat', 'long_nosed'), newCard('bat', 'hammerhead'),
-        newCard('spell', 'ripe_harvest'), newCard('spell', 'screech'), newCard('spell', 'pollen_burst')] },
-    'ghost starter L5': { cmd: 'ghost_bat', core: ['little_brown', 'common_vampire'], extra: [], level: 5 },
-    'fox drafted L5': { cmd: 'flying_fox', core: ['egyptian_fruit', 'pallas_tongue'], level: 5,
-      extra: [newCard('bat', 'straw_fruit', true), newCard('bat', 'long_nosed'), newCard('bat', 'hammerhead'),
-        newCard('spell', 'ripe_harvest'), newCard('spell', 'screech'), newCard('spell', 'pollen_burst')] },
+  const drafted = () => [newCard('bat', 'egyptian_fruit'), newCard('bat', 'egyptian_fruit', true), newCard('bat', 'straw_fruit'),
+    newCard('bat', 'pallas_tongue'), newCard('spell', 'ripe_harvest'), newCard('spell', 'screech')];
+  const decks: Record<string, { mat: string; flock: string[]; extra: Card[]; level: number }> = {
+    'ghost starter L1': { mat: 'ghost_bat', flock: ['little_brown', 'common_vampire', 'egyptian_fruit'], extra: [], level: 1 },
+    'fox starter L1': { mat: 'flying_fox', flock: ['egyptian_fruit', 'pallas_tongue', 'little_brown'], extra: [], level: 1 },
+    'spectral starter L1': { mat: 'spectral_bat', flock: ['lesser_bulldog', 'common_vampire', 'little_brown'], extra: [], level: 1 },
+    'fox drafted L1': { mat: 'flying_fox', flock: ['egyptian_fruit', 'pallas_tongue', 'little_brown'], level: 1, extra: drafted() },
+    'ghost starter L5': { mat: 'ghost_bat', flock: ['little_brown', 'common_vampire', 'egyptian_fruit'], extra: [], level: 5 },
+    'fox drafted L5': { mat: 'flying_fox', flock: ['egyptian_fruit', 'pallas_tongue', 'little_brown'], level: 5, extra: drafted() },
   };
   for (const [name, d] of Object.entries(decks)) {
     it(name, () => {
@@ -352,10 +415,10 @@ describe('balance smoke', () => {
         let lost = 0;
         const N = 8;
         for (let s = 0; s < N; s++) {
-          const deck = [...buildStartingDeck(d.core), ...d.extra.map((c) => newCard(c.kind, c.id, c.upgraded))];
+          const deck = [...buildStartingDeck(d.flock), ...d.extra.map((c) => newCard(c.kind, c.id, c.upgraded))];
           const def = new Defense(cfg({
-            encounterId: enc.id, row, deck, commanderId: d.cmd, seed: s * 7 + 1,
-            roster: roster([d.cmd, 'fledgling', ...d.core, ...d.extra.filter((c) => c.kind === 'bat').map((c) => c.id)], d.level),
+            encounterId: enc.id, row, deck, matriarchId: d.mat, seed: s * 7 + 1,
+            roster: roster([d.mat, 'fledgling', ...d.flock, ...d.extra.filter((c) => c.kind === 'bat').map((c) => c.id)], d.level),
           }));
           if (botLevel(def) === 'won') wins++;
           lost += 1000 - def.cave.hp;

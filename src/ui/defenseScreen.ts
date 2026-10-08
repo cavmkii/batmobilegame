@@ -1,6 +1,7 @@
 import { BALANCE } from '../data/balance';
 import { BAT_BY_ID } from '../data/bats';
-import { RARITY_COLOR } from '../data/clans';
+import { CLANS, CLAN_ORDER, RARITY_COLOR, SYNERGY, SYNERGY_TIERS } from '../data/clans';
+import { MATRIARCH_BY_ID } from '../data/matriarchs';
 import { ENEMY_BY_ID } from '../data/enemies';
 import { SPELL_BY_ID } from '../data/spells';
 import { TERRAIN } from '../data/terrain';
@@ -16,7 +17,7 @@ import { endRun } from './runScreens';
 
 const hash = (s: string) => [...s].reduce((a, c) => (Math.imul(a, 31) + c.charCodeAt(0)) >>> 0, 7);
 
-type Sel = { kind: 'pool'; i: number } | { kind: 'spell'; i: number } | { kind: 'cmd' } | { kind: 'roost'; idx: number } | null;
+type Sel = { kind: 'pool'; i: number } | { kind: 'spell'; i: number } | { kind: 'roost'; idx: number } | null;
 
 function tonightSummary(d: Defense): string {
   const total = new Map<string, number>();
@@ -33,7 +34,7 @@ registerScreen('battle', (app) => {
     encounterId: node.encounter!,
     row: node.row,
     deck: r.deck,
-    commanderId: r.commanderId,
+    matriarchId: r.matriarchId,
     roster: app.profile.roster,
     relics: r.relics,
     caveHp: r.caveHp,
@@ -54,18 +55,20 @@ registerScreen('battle', (app) => {
 
   // ---------------- First-play tutorial ----------------
   type Wait = 'next' | 'select' | 'preview' | 'placed' | 'endDay';
-  interface Step { text: string; target?: 'canvas' | 'cmd' | 'pool' | 'guano' | 'end'; wait: Wait; check?: () => boolean; showWhen?: () => boolean }
+  interface Step { text: string; target?: 'canvas' | 'pool' | 'clans' | 'guano' | 'end'; wait: Wait; check?: () => boolean; showWhen?: () => boolean }
   const STEPS: Step[] = [
     { target: 'canvas', wait: 'next',
       text: 'Welcome to the roost. Enemies come down from the top toward your cave at the bottom. During the day, the red columns show tonight\'s wave: what is coming, how many, and where.' },
-    { target: 'cmd', wait: 'select', check: () => sel?.kind === 'cmd',
-      text: 'Start with your commander, your strongest bat. Tap the gold card.' },
+    { target: 'pool', wait: 'select', check: () => sel?.kind === 'pool',
+      text: 'These cards are your pool, drawn from your deck. Tap a bat card.' },
     { target: 'canvas', wait: 'preview',
       text: 'Tap a tile in a column the enemies will come down. That shows a preview first; nothing is spent yet.' },
     { target: 'canvas', wait: 'placed',
       text: 'This is the preview. Dashed tiles show the +1 spread this bat gives when it merges later. Tap the same tile again to build the roost (or another tile to move it).' },
     { target: 'pool', wait: 'placed',
-      text: 'These two cards are your pool, drawn from your deck. A used card leaves its slot empty until dawn or a ↻ reroll. Tap a bat, then place it the same way: tap a tile, then tap again.' },
+      text: 'A used card leaves its slot empty until dawn or a ↻ reroll. Place the other bat the same way: tap it, tap a tile, then tap again.' },
+    { target: 'clans', wait: 'next',
+      text: 'Clans. Each clan adds up the levels of its roosts on the field. At 3, 6 and 10 it unlocks a stronger bonus, and bonuses lock in at dusk. The ♛ chip is your matriarch\'s rule for this run: tap it to read it.' },
     { target: 'guano', wait: 'next',
       text: 'Guano pays for bats, rerolls and spells. Each dawn your roosts make more: +1 for every 2 bats you house. Building bats grows your income.' },
     { target: 'end', wait: 'endDay', text: 'When you are ready, tap End day.' },
@@ -75,7 +78,7 @@ registerScreen('battle', (app) => {
       text: 'Day 2. Two roosts of the same bat at the same level merge into one a level higher. Tap one roost, then the other (preview, then confirm). A merge also gives +1 to the roosts in that bat\'s pattern. Press and hold any bat card to see its pattern. Good luck!' },
   ];
   let tut = app.profile.tutorialDone ? -1 : 0;
-  if (tut === 0) d.guano += 4; // a little extra so the first commander and a pool bat are both affordable
+  if (tut === 0) d.guano += 2; // a little extra so both pool bats are affordable
   const finishTutorial = () => {
     tut = -1;
     app.profile.tutorialDone = true;
@@ -135,18 +138,43 @@ registerScreen('battle', (app) => {
   const endBtn = h('button.primary.end-day', { onclick: () => { sel = null; pending = null; note = ''; meet(); d.endDay(); onTutorial('endDay'); } }, 'End day ☾');
   const speedBtn = h('button.ghost.small', { onclick: () => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; speedBtn.textContent = `${speed}×`; } }, '1×');
   const cards = h('div.hand-row');
+  const clanBar = h('div.clan-bar');
+  const mat = MATRIARCH_BY_ID[r.matriarchId];
+  /** Matriarch rule plus each clan's strength: live by day, locked in at night. */
+  const renderClans = (isDay: boolean) => {
+    const cs = isDay ? d.clanStrength() : d.nightClans;
+    const chips = CLAN_ORDER.filter((c) => cs[c].levels > 0).map((c) => {
+      const { levels, tier } = cs[c];
+      const next = SYNERGY_TIERS[tier];
+      const v = tier ? SYNERGY[c].values[tier - 1] : 0;
+      return h(`button.clan-chip${tier ? '.on' : ''}`, {
+        style: `--clan:${CLANS[c].color}`,
+        onclick: () => {
+          note = `${CLANS[c].name}: ${levels} roost level${levels === 1 ? '' : 's'} on the field. `
+            + (tier ? `${SYNERGY[c].text(v)}${isDay ? ' tonight' : ''}. ` : '')
+            + (next ? `${next - levels} more for: ${SYNERGY[c].text(SYNERGY[c].values[tier])}.` : 'Top tier.');
+          key = '';
+        },
+      }, h('span.cc-name', CLANS[c].name.slice(0, 3).toUpperCase()), h('span.cc-n', `${levels}${next ? '/' + next : ''}`),
+      h('span.cc-pips', ...SYNERGY_TIERS.map((_, i) => h(`i${i < tier ? '.lit' : ''}`))));
+    });
+    clanBar.replaceChildren(
+      mat ? h('button.clan-chip.mat', { onclick: () => { note = `♛ ${BAT_BY_ID[mat.batId].name}, ${mat.title}: ${mat.rule}`; key = ''; } }, `♛ ${mat.title}`) : '',
+      ...chips,
+      chips.length ? '' : h('span.small.muted', 'Clan bonuses appear as you build.'),
+    );
+  };
   const overlay = h('div.battle-overlay');
 
   const selectedBat = (): string | null => {
     if (d.phase !== 'day' || !sel) return null;
-    if (sel.kind === 'cmd') return d.commander.inPlay ? null : d.commander.bp.batId;
     if (sel.kind === 'pool') {
       const c = d.pool[sel.i];
       return c && c.kind === 'bat' ? c.id : null;
     }
     return null;
   };
-  const selSource = () => (sel?.kind === 'cmd' ? 'cmd' : sel?.kind === 'pool' ? sel.i : null);
+  const selSource = () => (sel?.kind === 'pool' ? sel.i : null);
 
   /** Text for the preview step: what confirming will do. */
   const previewNote = (slot: number): string => {
@@ -160,7 +188,7 @@ registerScreen('battle', (app) => {
     const t = s.terrain && d.terrainMatches(slot, batId) ? ` On its home terrain: ${TERRAIN[s.terrain].desc}` : '';
     return `Preview: build a ${name} roost here.${t} The dashed tiles are what it will +1 when it merges later. Tap the tile again to confirm.`;
   };
-  /** The bat a preview would put down (pool card, commander, or a roost being merged). */
+  /** The bat a preview would put down (pool card, or a roost being merged). */
   const previewBat = (): string | null => (sel?.kind === 'roost' ? d.slots[sel.idx].roost?.batId ?? null : selectedBat());
 
   const highlight = (): Highlight => {
@@ -201,12 +229,12 @@ registerScreen('battle', (app) => {
     return { slots, pattern, batId, peek: peekTiles(), preview: null, footprint: new Set() };
   };
 
-  const describeBat = (batId: string, upgraded: boolean, isCmd: boolean): string => {
-    const bp = isCmd ? d.commander.bp : blueprint(batId, app.profile.roster[batId], upgraded);
+  const describeBat = (batId: string, upgraded: boolean): string => {
+    const bp = blueprint(batId, app.profile.roster[batId], upgraded);
     const traits = bp.traits.map(describeTrait).join(', ');
     const stackable = d.slots.some((s) => s.roost && d.canStackOn(s, batId));
     return `${bp.name}: roost ❤${bp.roost.hp}, keeps ${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''} out (❤${bp.stats.hp} ⚔${bp.stats.atk}), +1 every ${bp.roost.respawn}s${traits ? ' · ' + traits : ''}. `
-      + (isCmd ? `Tap an empty tile.${d.commander.casts ? ` Commander tax: +${d.commander.casts * BALANCE.commander.tax} for ${d.commander.casts} earlier placement${d.commander.casts > 1 ? 's' : ''}.` : ' If destroyed it returns here, costing 2 more each time.'}` : stackable ? 'Tap its level-1 roost (blue) to merge into level 2, or an empty tile.' : 'Tap a tile.');
+      + (stackable ? 'Tap a blue roost to merge into it, or an empty tile.' : 'Tap a tile.');
   };
 
   const onPool = (i: number) => {
@@ -275,13 +303,13 @@ registerScreen('battle', (app) => {
     }
     pending = null;
     const s = d.slots[slot];
-    if (s.roost && d.phase === 'day' && !s.roost.isCommander && !(sel?.kind === 'roost' && sel.idx === slot)) {
+    if (s.roost && d.phase === 'day' && !(sel?.kind === 'roost' && sel.idx === slot)) {
       // Pick this roost up to merge it into a matching one.
       const ro = s.roost;
       const targets = d.mergeTargets(slot).length;
       sel = { kind: 'roost', idx: slot };
       note = `${ro.bp.name} roost, level ${ro.level} (${d.batsPerRoost(ro)} bats). `
-        + (targets ? `Tap a blue level-${ro.level} ${ro.bp.name} roost to merge them into level ${ro.level + 1}.` : `Merging needs another level-${ro.level} ${ro.bp.name} roost.`);
+        + (targets ? `Tap a blue ${ro.bp.name} roost to merge into it.` : `Merging needs another level-${ro.level} ${ro.bp.name} roost${d.rule.mergeReach ? ` (or one up to ${d.rule.mergeReach} level higher)` : ''}.`);
       return;
     }
     if (s.roost) {
@@ -294,25 +322,24 @@ registerScreen('battle', (app) => {
     sel = null;
   });
 
-  const cardEl = (o: { card: Card | null; isCmd?: boolean; sel: Sel; onTap: () => void; playable: boolean; tag?: string }) => {
-    if (!o.card && !o.isCmd) return h('div.hand-card.empty', h('div.empty-label', 'empty'));
-    const isCmd = !!o.isCmd;
-    const id = isCmd ? d.commander.bp.batId : o.card!.id;
-    const kind = isCmd ? 'bat' : o.card!.kind;
-    const cost = isCmd ? d.commanderCost() : d.cardCost(o.card!);
+  const cardEl = (o: { card: Card | null; sel: Sel; onTap: () => void; playable: boolean; tag?: string }) => {
+    if (!o.card) return h('div.hand-card.empty', h('div.empty-label', 'empty'));
+    const card = o.card;
+    const id = card.id;
+    const kind = card.kind;
+    const cost = d.cardCost(card);
     const name = kind === 'bat' ? BAT_BY_ID[id].name : SPELL_BY_ID[id].name;
     const clans = kind === 'bat' ? BAT_BY_ID[id].clans : SPELL_BY_ID[id].clans;
-    const urge = isCmd && d.phase === 'day' && !d.commander.inPlay && d.guano >= d.commanderCost();
-    const cls = ['hand-card', isCmd ? 'commander' : '', urge ? 'urge' : '', same(sel, o.sel) ? 'selected' : '', o.playable ? '' : 'disabled', kind === 'spell' ? 'spell' : ''].filter(Boolean).join('.');
+    const cls = ['hand-card', same(sel, o.sel) ? 'selected' : '', o.playable ? '' : 'disabled', kind === 'spell' ? 'spell' : ''].filter(Boolean).join('.');
     return h(`button.${cls}`, {
-      style: `--rarity:${isCmd ? 'var(--accent)' : RARITY_COLOR[rarityOf(o.card!)]}`,
+      style: `--rarity:${RARITY_COLOR[rarityOf(card)]}`,
       onpointerdown: (e: PointerEvent) => { e.preventDefault(); o.onTap(); if (kind === 'bat') startHold(id, null); },
     },
     h('span.cost', cost),
     kind === 'bat' ? batImg(id, 2) : h('div.spell-icon', SPELL_BY_ID[id].icon),
-    h('div.hc-name', name.replace(/ Bat$/, '') + (!isCmd && o.card!.upgraded ? '+' : '')),
+    h('div.hc-name', name.replace(/ Bat$/, '') + (card.upgraded ? '+' : '')),
     clanPips(clans),
-    kind === 'bat' && !isCmd ? patternGrid(id, 'xs') : '',
+    kind === 'bat' ? patternGrid(id, 'xs') : '',
     o.tag ? h('div.tax', o.tag) : '',
     );
   };
@@ -326,27 +353,22 @@ registerScreen('battle', (app) => {
     caveText.textContent = `${Math.max(0, Math.round(d.cave.hp))}`;
     endBtn.style.display = isDay ? '' : 'none';
     speedBtn.style.display = isDay ? 'none' : '';
-    const k = [d.phase, d.day, d.guano, JSON.stringify(peek), pending, tut, JSON.stringify(sel), d.commander.inPlay, d.commander.casts,
+    const k = [d.phase, d.day, d.guano, JSON.stringify(peek), pending, tut, JSON.stringify(sel),
       d.pool.map((c) => c?.uid ?? '-').join(','), d.spells.map((c) => c.uid).join(','), note,
       d.slots.map((s) => (s.roost ? `${s.roost.batId}${s.roost.level}` : 0)).join('.')].join('|');
     if (k === key) return;
     key = k;
     guano.replaceChildren(h('span.g-icon', '◆'), h('b', String(d.guano)),
       h('span.small.muted', isDay ? ` guano · +${d.projectedIncome()} at dawn` : ' guano'));
-    guano.title = 'Dawn income: +2, plus 1 per 2 bats housed in standing roosts, plus 1 per 4 kills';
+    guano.title = `Dawn income: +2, plus 1 per 2 bats housed in standing roosts, plus 1 per ${d.rule.killsPerGuano} kills, plus the Nectarivore bonus`;
+    renderClans(isDay);
     piles.textContent = `deck ${d.drawPile.length} · discard ${d.discard.length}`;
     refreshBtn.textContent = `↻ ${d.refreshCost}`;
     refreshBtn.disabled = !d.canRefresh();
     refreshBtn.title = 'Discard the pool and draw new cards';
     refreshBtn.style.display = isDay ? '' : 'none';
 
-    const cmdPlayable = isDay && !d.commander.inPlay && d.guano >= d.commanderCost();
     cards.replaceChildren(
-      cardEl({
-        card: null, isCmd: true, sel: { kind: 'cmd' }, playable: cmdPlayable,
-        onTap: () => { pending = null; sel = same(sel, { kind: 'cmd' }) ? null : { kind: 'cmd' }; note = ''; onTutorial('select'); },
-        tag: d.commander.inPlay ? 'in play' : d.commander.casts ? `tax +${d.commander.casts * BALANCE.commander.tax}` : 'place me',
-      }),
       h('div.row-label', 'pool'),
       ...d.pool.map((c, i) => cardEl({
         card: c, sel: { kind: 'pool', i }, onTap: () => onPool(i),
@@ -369,11 +391,10 @@ registerScreen('battle', (app) => {
           : `${name}: this roost's pattern doesn't reach any tile from here.`;
     }
     if (!text && sel) {
-      if (sel.kind === 'cmd') text = describeBat(d.commander.bp.batId, false, true);
-      else if (sel.kind === 'pool') {
+      if (sel.kind === 'pool') {
         const c = d.pool[sel.i];
         if (c) text = c.kind === 'bat'
-          ? describeBat(c.id, c.upgraded, false)
+          ? describeBat(c.id, c.upgraded)
           : `${SPELL_BY_ID[c.id].name}: ${SPELL_BY_ID[c.id].desc} Tap again to take it (free); casting costs ${d.cardCost(c)} guano.`;
       } else if (sel.kind === 'spell') {
         const c = d.spells[sel.i];
@@ -383,8 +404,8 @@ registerScreen('battle', (app) => {
     if (!text) {
       text = isDay
         ? d.day === 1
-          ? `${d.previewHidden ? 'New Moon: you won\'t see tonight\'s enemies in advance.' : 'Tonight\'s enemies are shown at the top.'} Start with your commander (gold card), placed in a column they'll come down. Two roosts of the same bat and level merge into one a level higher: tap one, then the other. ↻ rerolls the pool for ${d.refreshCost} guano.`
-          : d.previewHidden ? `Dawn: +${d.lastIncome} guano. New Moon: tonight's enemies are hidden.` : `Dawn: +${d.lastIncome} guano (${d.lastIncomeParts.base} base, ${d.lastIncomeParts.roosts} from roosts, ${d.lastIncomeParts.kills} from kills${d.lastIncomeParts.relic ? `, ${d.lastIncomeParts.relic} relic` : ''}). Tonight: ${tonightSummary(d)}.`
+          ? `${d.previewHidden ? 'New Moon: you won\'t see tonight\'s enemies in advance.' : 'Tonight\'s enemies are shown at the top.'} Build roosts in the columns they'll come down. Two roosts of the same bat and level merge into one a level higher: tap one, then the other. ↻ rerolls the pool for ${d.refreshCost} guano.`
+          : d.previewHidden ? `Dawn: +${d.lastIncome} guano. New Moon: tonight's enemies are hidden.` : `Dawn: +${d.lastIncome} guano (${d.lastIncomeParts.base} base, ${d.lastIncomeParts.roosts} from roosts, ${d.lastIncomeParts.kills} from kills${d.lastIncomeParts.clans ? `, ${d.lastIncomeParts.clans} nectar` : ''}${d.lastIncomeParts.relic ? `, ${d.lastIncomeParts.relic} relic` : ''}). Tonight: ${tonightSummary(d)}.`
         : 'Bats fly out on their own. Spells are instants: tap one twice to cast.';
     }
     info.textContent = text;
@@ -405,8 +426,8 @@ registerScreen('battle', (app) => {
       );
       const targets: Record<string, Element[]> = {
         canvas: [canvas],
-        cmd: [cards.children[0]],
-        pool: [...cards.querySelectorAll('.hand-card:not(.commander)')].slice(0, 2),
+        pool: [...cards.querySelectorAll('.hand-card')].slice(0, d.pool.length),
+        clans: [clanBar],
         guano: [guano],
         end: [endBtn],
       };
@@ -472,6 +493,7 @@ registerScreen('battle', (app) => {
     h('div.canvas-wrap', canvas, coach, overlay),
     info,
     h('div.def-controls', guano, piles, endBtn),
+    clanBar,
     cards,
   );
 });

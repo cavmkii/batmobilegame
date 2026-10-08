@@ -68,7 +68,8 @@ export interface BatDef {
   species: string;
   clans: ClanId[];
   rarity: Rarity;
-  commander?: boolean;
+  /** Leads a run instead of being drafted (see matriarchs.ts). */
+  matriarch?: boolean;
   /** Basic bat: unlimited copies allowed in a deck, never in gacha. */
   basic?: boolean;
   cost: number;
@@ -141,7 +142,7 @@ export type RelicEffect =
   | { kind: 'speedPct'; pct: number }
   | { kind: 'hpPct'; pct: number }
   | { kind: 'atkPct'; pct: number }
-  | { kind: 'commanderDiscount'; amount: number }
+  | { kind: 'synergyBonus'; amount: number }
   | { kind: 'healAfterBattle'; amount: number }
   | { kind: 'startLevel'; amount: number };
 

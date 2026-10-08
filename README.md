@@ -1,6 +1,6 @@
 # Batmobile
 
-A mobile-first collect-and-upgrade bat game. You build a commander-rules deck and defend your
+A mobile-first collect-and-upgrade bat game. You lead a flock of bats under a matriarch and defend your
 cave over day/night rounds: by day, play bat cards to build roosts; by night, the bats fight on their
 own and you cast spells as instants. It sits inside a Slay the Spire–style roguelite run.
 Design: [DESIGN.md](DESIGN.md).

@@ -19,9 +19,9 @@ export interface Profile {
   glow: number;
   pity: { sinceEpic: number; sinceLegendary: number };
   starterChosen: boolean;
-  /** Saved core per commander, so the deck screen remembers your picks. */
-  cores: Record<string, string[]>;
-  lastCommander?: string;
+  /** Last starting flock, so the Play screen remembers your picks. */
+  flock?: string[];
+  lastMatriarch?: string;
   /** Last Play-screen choices, remembered for next time. */
   lastSetup?: { biome: string; modifiers: string[] };
   /** Enemy ids met in a level (unlocks entries in the Predators field guide). */
@@ -45,7 +45,6 @@ export function newProfile(): Profile {
     glow: BALANCE.gacha.ten,
     pity: { sinceEpic: 0, sinceLegendary: 0 },
     starterChosen: false,
-    cores: {},
     pendingDupes: [],
     claimed: [],
     seenEnemies: [],
@@ -53,11 +52,24 @@ export function newProfile(): Profile {
   };
 }
 
-export function chooseStarter(p: Profile, commanderId: string) {
-  p.roster[commanderId] = newOwnedBat();
+export function chooseStarter(p: Profile, matriarchId: string) {
+  p.roster[matriarchId] = newOwnedBat();
   for (const id of STARTER_COMMONS) p.roster[id] ??= newOwnedBat();
   p.starterChosen = true;
-  p.lastCommander = commanderId;
+  p.lastMatriarch = matriarchId;
+}
+
+/** Saves from the commander era (same version): rename fields in place. */
+function migrate(p: Profile) {
+  const legacy = p as Profile & { cores?: unknown; lastCommander?: string };
+  p.lastMatriarch ??= legacy.lastCommander;
+  delete legacy.cores;
+  delete legacy.lastCommander;
+  const run = p.run as (RunState & { commanderId?: string }) | undefined;
+  if (run && !run.matriarchId) {
+    run.matriarchId = run.commanderId ?? 'flying_fox';
+    delete run.commanderId;
+  }
 }
 
 export function loadProfile(): Profile {
@@ -71,6 +83,7 @@ export function loadProfile(): Profile {
     p.pendingDupes = (p.pendingDupes ?? []).filter((id) => BAT_BY_ID[id]);
     p.claimed ??= [];
     p.seenEnemies ??= [];
+    migrate(p);
     // Relics can be renamed or removed between versions.
     if (p.run) p.run.relics = p.run.relics.filter((id) => RELIC_BY_ID[id]);
     return p;
@@ -106,6 +119,7 @@ export function importSave(code: string): Profile | null {
   try {
     const p = JSON.parse(decodeURIComponent(escape(atob(code.trim())))) as Profile;
     if (!p || p.version !== SAVE_VERSION || typeof p.roster !== 'object') return null;
+    migrate(p);
     return p;
   } catch {
     return null;

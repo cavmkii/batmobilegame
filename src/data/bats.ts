@@ -155,9 +155,9 @@ export const BATS: BatDef[] = [
     fact: 'Its tongue is 1.5× its body length, the longest relative to body size of any mammal.',
   },
 
-  // ---------- Commanders (legendary) ----------
+  // ---------- Matriarchs (legendary) ----------
   {
-    id: 'flying_fox', name: 'Great Flying Fox', species: 'Pteropus vampyrus', clans: ['FRU', 'NEC'], rarity: 'legendary', commander: true,
+    id: 'flying_fox', name: 'Great Flying Fox', species: 'Pteropus vampyrus', clans: ['FRU', 'NEC'], rarity: 'legendary', matriarch: true,
     cost: 4, pattern: [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]], roost: { hp: 450, count: 1, respawn: 16 }, stats: { hp: 800, atk: 35, range: 50, rate: 1.4, speed: 30, knockbacks: 5 },
     traits: [{ kind: 'healAura', amount: 25, every: 2, radius: 140 }, { kind: 'atkAura', pct: 20, radius: 140 }],
     evolved: { name: 'Canopy Sovereign', trait: { kind: 'hasteAura', pct: 15, radius: 140 } }, talents: [hp(25), cheap],
@@ -165,7 +165,7 @@ export const BATS: BatDef[] = [
     fact: 'Wingspan up to 1.5 m. Despite the species name, it eats fruit and nectar.',
   },
   {
-    id: 'ghost_bat', name: 'Ghost Bat', species: 'Macroderma gigas', clans: ['SAN', 'INS'], rarity: 'legendary', commander: true,
+    id: 'ghost_bat', name: 'Ghost Bat', species: 'Macroderma gigas', clans: ['SAN', 'INS'], rarity: 'legendary', matriarch: true,
     cost: 4, pattern: [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]], roost: { hp: 350, count: 1, respawn: 14 }, stats: { hp: 450, atk: 34, range: 40, rate: 1.0, speed: 60, knockbacks: 3 },
     traits: [{ kind: 'lifesteal', pct: 25 }, { kind: 'aoe' }],
     evolved: { name: 'Pale Tyrant', trait: { kind: 'knockChance', chance: 0.25 } }, talents: [atk(25), fast(20)],
@@ -173,7 +173,7 @@ export const BATS: BatDef[] = [
     fact: "Australia's only carnivorous bat: it hunts frogs, birds and other bats, then eats them at a feeding roost.",
   },
   {
-    id: 'spectral_bat', name: 'Spectral Bat', species: 'Vampyrum spectrum', clans: ['PIS', 'SAN'], rarity: 'legendary', commander: true,
+    id: 'spectral_bat', name: 'Spectral Bat', species: 'Vampyrum spectrum', clans: ['PIS', 'SAN'], rarity: 'legendary', matriarch: true,
     cost: 5, pattern: [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]], roost: { hp: 350, count: 1, respawn: 16 }, stats: { hp: 450, atk: 75, range: 220, rate: 1.8, speed: 30, knockbacks: 3 },
     traits: [{ kind: 'multiHit', targets: 3 }, { kind: 'lifesteal', pct: 20 }],
     evolved: { name: 'False Vampire King', trait: { kind: 'aoe' } }, talents: [atk(25), hp(25)],
@@ -320,9 +320,9 @@ export const BATS: BatDef[] = [
     fact: 'Has no visible tail and a long snout. Besides nectar it eats pollen and insects.',
   },
 
-  // ---------- Commander (legendary) ----------
+  // ---------- Matriarch (legendary) ----------
   {
-    id: 'greater_noctule', name: 'Greater Noctule', species: 'Nyctalus lasiopterus', clans: ['INS', 'PIS'], rarity: 'legendary', commander: true,
+    id: 'greater_noctule', name: 'Greater Noctule', species: 'Nyctalus lasiopterus', clans: ['INS', 'PIS'], rarity: 'legendary', matriarch: true,
     cost: 5, pattern: [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]], roost: { hp: 400, count: 1, respawn: 15 },
     stats: { hp: 420, atk: 60, range: 160, rate: 1.3, speed: 80, knockbacks: 3 },
     traits: [{ kind: 'multiHit', targets: 2 }, { kind: 'knockChance', chance: 0.2 }],
@@ -333,6 +333,6 @@ export const BATS: BatDef[] = [
 ];
 
 export const BAT_BY_ID: Record<string, BatDef> = Object.fromEntries(BATS.map((b) => [b.id, b]));
-export const STARTER_COMMANDERS = ['flying_fox', 'ghost_bat', 'spectral_bat'];
+export const STARTER_MATRIARCHS = ['flying_fox', 'ghost_bat', 'spectral_bat'];
 /** One common from each clan for a new player. Explicit, so adding commons doesn't change the starter gift. */
 export const STARTER_COMMONS = ['egyptian_fruit', 'little_brown', 'common_vampire', 'lesser_bulldog', 'pallas_tongue'];

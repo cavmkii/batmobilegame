@@ -103,8 +103,8 @@ export function batImageUrl(batId: string, scale = 2): string {
   let u = urlCache.get(key);
   if (!u) {
     const def = BAT_BY_ID[batId];
-    // Normalise size for UI so small bats aren't tiny; keep commanders a bit bigger.
-    const s = (scale * (def.commander ? 1.15 : 1)) / def.sprite.size;
+    // Normalise size for UI so small bats aren't tiny; keep matriarchs a bit bigger.
+    const s = (scale * (def.matriarch ? 1.15 : 1)) / def.sprite.size;
     u = batSprite(batId, 0, s).toDataURL();
     urlCache.set(key, u);
   }

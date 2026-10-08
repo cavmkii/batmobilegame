@@ -4,7 +4,7 @@ import { BAT_BY_ID } from '../data/bats';
 import { RELICS } from '../data/relics';
 import { SPELL_BY_ID } from '../data/spells';
 import type { Card, Rarity } from '../data/types';
-import { buildStartingDeck, canAddToDeck, draftPool, newCard, validateCore } from './deck';
+import { buildStartingDeck, draftPool, newCard, validateSetup } from './deck';
 import { generateMap, type MapNode, type RunMap } from './map';
 import type { Profile } from './profile';
 import { Rng } from './rng';
@@ -24,7 +24,8 @@ export interface ShopState {
 
 export interface RunState {
   rngState: number;
-  commanderId: string;
+  /** Leads the run with one rule (see data/matriarchs.ts). */
+  matriarchId: string;
   /** Map choice (biome id). Older saves may lack it. */
   biome?: string;
   /** Modifier ids chosen on the Play screen. */
@@ -59,8 +60,8 @@ export interface RunSetup {
   modifiers?: string[];
 }
 
-export function startRun(p: Profile, commanderId: string, core: string[], seed: number, setup: RunSetup = {}): RunState {
-  const err = validateCore(p, commanderId, core);
+export function startRun(p: Profile, matriarchId: string, flock: string[], seed: number, setup: RunSetup = {}): RunState {
+  const err = validateSetup(p, matriarchId, flock);
   if (err) throw new Error(err);
   const rng = new Rng(seed);
   const map = generateMap(rng);
@@ -72,10 +73,10 @@ export function startRun(p: Profile, commanderId: string, core: string[], seed: 
   }
   const run: RunState = {
     rngState: rng.state,
-    commanderId,
+    matriarchId,
     biome: BIOME_BY_ID[setup.biome ?? ''] ? setup.biome! : BIOMES[0].id,
     modifiers,
-    deck: buildStartingDeck(core),
+    deck: buildStartingDeck(flock),
     relics: [],
     caveHp: cave,
     caveMax: cave,
@@ -92,8 +93,8 @@ export function startRun(p: Profile, commanderId: string, core: string[], seed: 
     event: null,
     status: 'active',
   };
-  p.cores[commanderId] = [...core];
-  p.lastCommander = commanderId;
+  p.flock = [...flock];
+  p.lastMatriarch = matriarchId;
   p.lastSetup = { biome: run.biome!, modifiers: [...modifiers] };
   p.stats.runs++;
   return run;
@@ -169,14 +170,21 @@ function rollRarity(rng: Rng): Rarity {
   return rng.weighted(BALANCE.draft.weights);
 }
 
-/** Up to n distinct offers legal for the commander and not already in the deck. */
+/**
+ * Up to n distinct offers. Some are copies of bats already in the deck (merging needs copies),
+ * the rest are new species by rarity, or spells.
+ */
 export function draftOffers(run: RunState, rng: Rng, n: number): Offer[] {
-  const pool = draftPool(run.commanderId);
+  const pool = draftPool();
+  const owned = [...new Set(run.deck.filter((c) => c.kind === 'bat' && !BAT_BY_ID[c.id].basic).map((c) => c.id))];
   const offers: Offer[] = [];
   const taken = (o: Offer) => offers.some((x) => x.kind === o.kind && x.id === o.id);
   for (let tries = 0; offers.length < n && tries < 60; tries++) {
     let o: Offer;
-    if (rng.next() < BALANCE.draft.spellChance) {
+    const roll = rng.next();
+    if (owned.length && roll < BALANCE.draft.copyChance) {
+      o = { kind: 'bat', id: rng.pick(owned) };
+    } else if (roll < BALANCE.draft.copyChance + BALANCE.draft.spellChance) {
       o = { kind: 'spell', id: rng.pick(pool.spells) };
     } else {
       const rarity = rollRarity(rng);
@@ -184,7 +192,7 @@ export function draftOffers(run: RunState, rng: Rng, n: number): Offer[] {
       if (!bats.length) continue;
       o = { kind: 'bat', id: rng.pick(bats) };
     }
-    if (taken(o) || !canAddToDeck(run.deck, o)) continue;
+    if (taken(o)) continue;
     offers.push(o);
   }
   return offers;
@@ -197,7 +205,6 @@ export const deckFull = (run: RunState) => run.deck.length >= BALANCE.run.deckCa
 
 /** Add a card, optionally removing one to make room at the cap. Returns false if not allowed. */
 export function addCard(run: RunState, o: Offer, removeUid?: string): boolean {
-  if (!canAddToDeck(run.deck, o)) return false;
   if (deckFull(run)) {
     if (!removeUid || !removeCard(run, removeUid)) return false;
   }
@@ -317,7 +324,7 @@ export const EVENTS: RunEvent[] = [
     options: [
       {
         label: 'Adopt',
-        detail: 'Add a random card for your commander',
+        detail: 'Add a random card to your deck',
         apply: (r, rng) => {
           const [o] = draftOffers(r, rng, 1);
           if (!o) return 'No room in the roost.';

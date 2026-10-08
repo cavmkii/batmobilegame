@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../src/data/balance';
 import { BAT_BY_ID } from '../src/data/bats';
-import { canAddToDeck, legalCoreBats, newCard, validateCore, withinIdentity } from '../src/game/deck';
+import { buildStartingDeck, copiesIn, flockOptions, validateSetup } from '../src/game/deck';
 import { pull, resolveDupe } from '../src/game/gacha';
 import { generateMap } from '../src/game/map';
 import { chooseStarter, newProfile } from '../src/game/profile';
 import { blueprint, newOwnedBat } from '../src/game/progression';
 import { Rng } from '../src/game/rng';
-import { addCard, availableNodes, enterNode, finishRun, resolveBattle, startRun } from '../src/game/run';
+import { addCard, availableNodes, draftOffers, enterNode, finishRun, resolveBattle, startRun } from '../src/game/run';
 
 const starter = (cmd = 'ghost_bat') => {
   const p = newProfile();
@@ -15,31 +15,28 @@ const starter = (cmd = 'ghost_bat') => {
   return p;
 };
 
-describe('commander rules', () => {
-  it('checks identity', () => {
-    expect(withinIdentity(['SAN'], ['SAN', 'INS'])).toBe(true);
-    expect(withinIdentity(['FRU'], ['SAN', 'INS'])).toBe(false);
-    expect(withinIdentity([], ['SAN', 'INS'])).toBe(true);
-  });
-
-  it('only offers owned, on-identity, non-commander bats for the core', () => {
+describe('matriarch and starting flock', () => {
+  it('offers owned bats for the flock, never matriarchs or Fledglings', () => {
     const p = starter('ghost_bat');
-    expect(legalCoreBats(p, 'ghost_bat').sort()).toEqual(['common_vampire', 'little_brown']);
+    expect(flockOptions(p).sort()).toEqual(['common_vampire', 'egyptian_fruit', 'lesser_bulldog', 'little_brown', 'pallas_tongue']);
   });
 
-  it('rejects off-identity and duplicate cores', () => {
+  it('validates the setup', () => {
     const p = starter('ghost_bat');
-    expect(validateCore(p, 'ghost_bat', ['egyptian_fruit'])).toMatch(/identity/);
-    expect(validateCore(p, 'ghost_bat', ['little_brown', 'little_brown'])).toMatch(/Singleton/);
-    expect(validateCore(p, 'ghost_bat', ['little_brown', 'common_vampire'])).toBeNull();
-    expect(validateCore(p, 'flying_fox', [])).toMatch(/own/);
+    expect(validateSetup(p, 'ghost_bat', ['little_brown', 'egyptian_fruit', 'pallas_tongue'])).toBeNull();
+    expect(validateSetup(p, 'ghost_bat', ['little_brown', 'egyptian_fruit', 'pallas_tongue', 'lesser_bulldog'])).toMatch(/up to/);
+    expect(validateSetup(p, 'ghost_bat', ['little_brown', 'little_brown'])).toMatch(/once/);
+    expect(validateSetup(p, 'ghost_bat', ['hammerhead'])).toMatch(/collection/);
+    expect(validateSetup(p, 'flying_fox', [])).toMatch(/own/);
+    expect(validateSetup(p, 'little_brown', [])).toMatch(/matriarch/);
   });
 
-  it('is singleton except for Fledglings', () => {
-    const deck = [newCard('bat', 'little_brown'), newCard('bat', 'fledgling')];
-    expect(canAddToDeck(deck, { kind: 'bat', id: 'little_brown' })).toBe(false);
-    expect(canAddToDeck(deck, { kind: 'bat', id: 'fledgling' })).toBe(true);
-    expect(canAddToDeck(deck, { kind: 'spell', id: 'screech' })).toBe(true);
+  it('starts with copies of each species plus Fledglings, at a fixed size', () => {
+    const F = BALANCE.run.flock;
+    const full = buildStartingDeck(['little_brown', 'egyptian_fruit', 'pallas_tongue']);
+    expect(full.length).toBe(F.species * F.copies + F.fledglings);
+    expect(copiesIn(full, { kind: 'bat', id: 'little_brown' })).toBe(F.copies);
+    expect(buildStartingDeck(['little_brown']).length).toBe(full.length);
   });
 });
 
@@ -120,20 +117,39 @@ describe('map', () => {
   });
 });
 
+describe('drafting', () => {
+  it('leans toward copies of bats already in the deck', () => {
+    const p = starter('ghost_bat');
+    const run = startRun(p, 'ghost_bat', ['little_brown', 'common_vampire'], 7);
+    const rng = new Rng(3);
+    let copies = 0;
+    let total = 0;
+    for (let i = 0; i < 300; i++) {
+      for (const o of draftOffers(run, rng, 3)) {
+        total++;
+        if (o.kind === 'bat' && (o.id === 'little_brown' || o.id === 'common_vampire')) copies++;
+      }
+    }
+    expect(copies / total).toBeGreaterThan(0.2);
+    expect(copies / total).toBeLessThan(0.6);
+  });
+});
+
 describe('run flow', () => {
   it('starts, clears a battle, drafts, and banks rewards on loss', () => {
     const p = starter('ghost_bat');
     const run = startRun(p, 'ghost_bat', ['little_brown', 'common_vampire'], 42);
-    expect(run.deck.length).toBe(BALANCE.run.startDeckSize);
-    expect(run.deck.filter((c) => c.id === 'fledgling').length).toBe(6);
+    expect(run.deck.length).toBe(8);
+    expect(run.deck.filter((c) => c.id === 'fledgling').length).toBe(4);
+    expect(p.flock).toEqual(['little_brown', 'common_vampire']);
 
     const first = availableNodes(run)[0];
     enterNode(run, first.id);
     resolveBattle(run, true, 1400);
     expect(run.draft?.length).toBe(3);
-    for (const o of run.draft!) expect(withinIdentity(BAT_BY_ID[o.id]?.clans ?? [], ['SAN', 'INS'])).toBe(true);
+    for (const o of run.draft!) expect(o.kind === 'spell' || !BAT_BY_ID[o.id].matriarch).toBe(true);
     expect(addCard(run, run.draft![0])).toBe(true);
-    expect(addCard(run, run.draft![0])).toBe(false); // singleton
+    expect(addCard(run, run.draft![0])).toBe(true); // no singleton: copies are how you merge
 
     run.status = 'lost';
     const xpBefore = p.xp;
