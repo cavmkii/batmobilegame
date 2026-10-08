@@ -308,3 +308,13 @@ header.bar .currency { font-size: 13px; gap: 8px; }
 .clan-ref { margin: 8px 0; }
 .clan-ref summary { cursor: pointer; color: var(--accent); }
 .clan-ref > div { margin: 3px 0; }
+
+/* Skill tree */
+.skill-fork { display: grid; grid-template-columns: 54px 1fr 1fr; gap: 6px; align-items: stretch; margin: 6px 0; }
+.sf-lvl { display: grid; place-items: center; font-size: 12px; color: var(--accent); font-weight: 700; }
+.skill-fork.locked .sf-lvl { color: var(--muted, #8a80a0); }
+.skill { text-align: left; padding: 6px 8px; border-radius: 8px; background: var(--panel); border: 1px solid #ffffff22; line-height: 1.25; }
+.skill.chosen { border-color: var(--accent); background: #3a2e20; box-shadow: inset 0 0 0 1px var(--accent); }
+.skill:disabled { opacity: .45; }
+.accent { color: var(--accent); }
+.hc-atk { font-size: 11px; line-height: 1; display: flex; align-items: center; justify-content: center; gap: 2px; }

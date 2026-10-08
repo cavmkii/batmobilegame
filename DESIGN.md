@@ -259,6 +259,34 @@ region, a fact, and a conservation note where the status is notable and well est
 - **Save version 2** discards all older saves, so everyone starts fresh with the tutorial.
   Commander-era v2 saves are migrated in place (commander → matriarch); progress is kept.
 
+## 4c. Skill trees, names and attack readability (v0.5)
+
+- **Skill trees.** Every bat that fights (not matriarchs) has three forks, at roster Lv 3, 6
+  and 9. Each fork is a pick between two skills; picks can be switched freely from the bat's
+  page. Skills lean toward changing how the bat plays rather than flat stats:
+  wider pattern (merges spread further), +bats per roost, +1 per release, a new attack trait
+  (multi-hit, area, knockback, lifesteal, auras), faster refill. Skill traits never weaken a
+  trait the bat already has (an evolved multi-hit 3 stays 3). The roster shows a dot when a
+  fork is unlocked but unpicked. Talents (after evolution) are unchanged.
+- **Names on the field.** Each bat has a short common name (≤ 11 characters) drawn on its
+  roost tile. The field canvas renders at 3× its view size so the text is sharp on phones.
+- **Attack styles**, from traits and range, each with its own effect coloured by clan:
+
+  | Style | Rule | Effect |
+  |---|---|---|
+  | Melee bite | range < 1 tile | claw marks on the target |
+  | Ranged sonar | range ≥ 1 tile | sound waves travelling to the target |
+  | Hits several | multi-hit trait | a jagged line to every target hit |
+  | Area | aoe trait | a burst ring at the target |
+  | Lifesteal | any lifesteal | blood drops flowing back to the bat |
+
+  Enemies show smaller red claw marks (melee) or a red shot (ranged). Roost tiles carry a
+  glyph for the style, and cards say it in words ("Hits 2 at once · support").
+- **Balance:** the meta curve already saturates: by roster level 5 the bot clears every
+  level in the current single act, with or without skills. Skills add choice, not
+  challenge, until acts 2–3 (or ascension-style modifiers) give late levels something to
+  push against.
+
 ## 5. Run structure (unchanged from v0.1; battle nodes are now defense levels)
 
 - One act (designed for three later): 8 rows of nodes, branching paths.

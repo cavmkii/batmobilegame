@@ -64,6 +64,7 @@ function migrate(p: Profile) {
   const legacy = p as Profile & { cores?: unknown; lastCommander?: string };
   p.lastMatriarch ??= legacy.lastCommander;
   delete legacy.cores;
+  for (const o of Object.values(p.roster)) o.skills ??= [];
   delete legacy.lastCommander;
   const run = p.run as (RunState & { commanderId?: string }) | undefined;
   if (run && !run.matriarchId) {

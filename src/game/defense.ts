@@ -1,6 +1,6 @@
 import { BALANCE } from '../data/balance';
 import { BAT_BY_ID } from '../data/bats';
-import { CLAN_ORDER, SYNERGY, synergyTier } from '../data/clans';
+import { CLANS, CLAN_ORDER, SYNERGY, synergyTier } from '../data/clans';
 import { MATRIARCH_BY_ID, matriarchGuano } from '../data/matriarchs';
 import { ENCOUNTERS, ENEMY_BY_ID, type Encounter } from '../data/enemies';
 import { RELIC_BY_ID } from '../data/relics';
@@ -8,7 +8,7 @@ import { SPELL_BY_ID } from '../data/spells';
 import { BIOMES, BIOME_BY_ID, MODIFIER_BY_ID } from '../data/setup';
 import { TERRAIN } from '../data/terrain';
 import type { Card, ClanId, SpellEffect, Stats, TerrainId, Trait } from '../data/types';
-import { blueprint, type OwnedBat, type UnitBlueprint } from './progression';
+import { attackStyle, blueprint, type AttackStyle, type OwnedBat, type UnitBlueprint } from './progression';
 import { Rng } from './rng';
 
 const F = BALANCE.field;
@@ -102,6 +102,14 @@ export interface Unit {
 export interface FloatText { x: number; y: number; text: string; color: string; t: number }
 export interface Effect { kind: 'blast' | 'stun' | 'heal' | 'buff' | 'slow' | 'death' | 'place' | 'level'; x: number; y: number; r: number; t: number }
 
+/** One attack, for the renderer: drawn by style, coloured by the attacker's clan. */
+export interface Strike {
+  fx: number; fy: number; tx: number; ty: number;
+  style: AttackStyle | 'drain' | 'enemy' | 'enemyShot';
+  color: string;
+  t: number;
+}
+
 export type Phase = 'day' | 'night' | 'won' | 'lost';
 
 /** Clan → summed level of its standing roosts, and the bonus tier (0–3) that gives. */
@@ -128,6 +136,7 @@ export class Defense {
   units: Unit[] = [];
   floats: FloatText[] = [];
   effects: Effect[] = [];
+  strikes: Strike[] = [];
   cave: { hp: number; max: number };
   /** Clan bonuses locked in at dusk (bats leaving roosts tonight use these). */
   nightClans: ClanStrength = this.emptyClans();
@@ -303,9 +312,17 @@ export class Defense {
   /** Tiles a roost's pattern reaches from `slotIdx` (whether or not they hold a roost). */
   patternTiles(slotIdx: number, batId: string): Slot[] {
     const s = this.slots[slotIdx];
-    return BAT_BY_ID[batId].pattern
+    return this.patternOf(batId)
       .map(([dc, dr]) => this.slots.find((o) => o.col === s.col + dc && o.row === s.row + dr))
       .filter((o): o is Slot => !!o);
+  }
+
+  private patterns = new Map<string, [number, number][]>();
+  /** This bat's pattern with the player's spread skills. */
+  patternOf(batId: string): [number, number][] {
+    let p = this.patterns.get(batId);
+    if (!p) this.patterns.set(batId, (p = blueprint(batId, this.cfg.roster[batId]).pattern));
+    return p;
   }
 
   isMega(r: Roost): boolean {
@@ -418,6 +435,7 @@ export class Defense {
     this.units = this.units.filter((u) => !u.dead);
     this.floats = this.floats.filter((f) => this.clock - f.t < 1.2);
     this.effects = this.effects.filter((f) => this.clock - f.t < 0.8);
+    this.strikes = this.strikes.filter((f) => this.clock - f.t < 0.45);
 
     if (this.cave.hp <= 0) {
       this.cave.hp = 0;
@@ -804,7 +822,13 @@ export class Defense {
       dealt += this.damage(h, dmg);
       if (kc && kc.kind === 'knockChance' && !h.dead && this.rng.next() < kc.chance) this.knock(h);
     }
-    if (lifesteal > 0 && dealt > 0) this.heal(u, (dealt * lifesteal) / 100, false);
+    const style = attackStyle(u.traits, u.stats.range * U.rangePerTile);
+    const color = CLAN_COLOR[BAT_BY_ID[u.defId]?.clans[0] ?? ''] ?? '#d8d0e8';
+    for (const hit of style === 'splash' ? [target] : hits) this.strikes.push({ fx: u.x, fy: u.y, tx: hit.x, ty: hit.y, style, color, t: this.clock });
+    if (lifesteal > 0 && dealt > 0) {
+      this.heal(u, (dealt * lifesteal) / 100, false);
+      this.strikes.push({ fx: target.x, fy: target.y, tx: u.x, ty: u.y, style: 'drain', color: '#ff4060', t: this.clock });
+    }
     u.atkTimer = u.stats.rate;
     u.sinceAttack = 0;
     u.aimX = target.x;
@@ -843,6 +867,7 @@ export class Defense {
     if (bat) {
       const hits = u.traits.some((t) => t.kind === 'aoe') ? bats.filter((b) => !b.dead && dist(b, bat!) <= 0.6) : [bat];
       for (const h of hits) this.damage(h, dmg);
+      this.strikes.push({ fx: u.x, fy: u.y, tx: bat.x, ty: bat.y, style: range > 0.8 ? 'enemyShot' : 'enemy', color: '#ff6a5a', t: this.clock });
       u.aimX = bat.x;
       u.aimY = bat.y;
     } else if (roostSlot) {
@@ -994,5 +1019,6 @@ export class Defense {
   }
 }
 
+const CLAN_COLOR: Record<string, string> = Object.fromEntries(CLAN_ORDER.map((c) => [c, CLANS[c].color]));
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));

@@ -132,3 +132,58 @@ describe('save backup', () => {
     expect(importSave(btoa(JSON.stringify({ version: 1 })))).toBeNull();
   });
 });
+
+describe('skill trees, names and attack styles', async () => {
+  const { SKILL_TREES, SKILL_LEVELS } = await import('../src/data/skills');
+  const { activeSkills, blueprint, chooseSkill, skillsReady, attackStyle } = await import('../src/game/progression');
+
+  it('gives every bat that fights a tree, with spread skills that add new tiles', () => {
+    for (const b of BATS) {
+      const t = SKILL_TREES[b.id];
+      if (b.matriarch) { expect(t, b.id).toBeUndefined(); continue; }
+      expect(t, b.id).toBeTruthy();
+      for (const pair of t) for (const node of pair) {
+        if (node.effect.kind !== 'spread') continue;
+        for (const [c, r] of node.effect.tiles) {
+          expect(Math.abs(c) <= 2 && Math.abs(r) <= 2, b.id).toBe(true);
+          expect(b.pattern.some(([pc, pr]) => pc === c && pr === r), `${b.id} ${c},${r}`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it('applies a pick only once its level is reached', () => {
+    const o = { ...newOwnedBat(), level: SKILL_LEVELS[0] - 1 };
+    chooseSkill(o, 0, 0);
+    expect(activeSkills('little_brown', o)).toEqual([]);
+    o.level = SKILL_LEVELS[0];
+    expect(skillsReady('little_brown', o)).toBe(1);
+    chooseSkill(o, 0, 0); // Swarm Out: +1 per release
+    expect(skillsReady('little_brown', o)).toBe(0);
+    expect(blueprint('little_brown', o).roost.batch).toBe((BAT_BY_ID.little_brown.roost.batch ?? 1) + 1);
+    chooseSkill(o, 1, 0); // fork 2 not unlocked yet
+    expect(activeSkills('little_brown', o).length).toBe(1);
+  });
+
+  it('spread skills widen the pattern; skills never weaken an existing trait', () => {
+    const o = { ...newOwnedBat(), level: 9, skills: [0, 0, 0] };
+    expect(blueprint('little_brown', o).pattern).toContainEqual([0, -2]);
+    const ev = { ...newOwnedBat(), level: 9, evolved: true, skills: [-1, 0, -1] };
+    // Northern Long-eared evolves to multi-hit 3; its Gleaner skill is also 3. Long-eared skill 3 > base 2.
+    expect(blueprint('long_eared', ev).traits.find((t) => t.kind === 'multiHit')).toMatchObject({ targets: 3 });
+    const hairy = { ...newOwnedBat(), level: 9, skills: [1, -1, -1] }; // lifesteal 55 over base 40
+    expect(blueprint('hairy_legged', hairy).traits.find((t) => t.kind === 'lifesteal')).toMatchObject({ pct: 55 });
+  });
+
+  it('every bat has a short name that fits a roost tile', () => {
+    for (const b of BATS) expect(b.short.length, b.id).toBeLessThanOrEqual(11);
+    expect(new Set(BATS.map((b) => b.short)).size).toBe(BATS.length);
+  });
+
+  it('classifies attacks', () => {
+    expect(attackStyle(BAT_BY_ID.little_brown.traits, BAT_BY_ID.little_brown.stats.range)).toBe('bite');
+    expect(attackStyle(BAT_BY_ID.lesser_bulldog.traits, BAT_BY_ID.lesser_bulldog.stats.range)).toBe('sonar');
+    expect(attackStyle(BAT_BY_ID.long_eared.traits, BAT_BY_ID.long_eared.stats.range)).toBe('chain');
+    expect(attackStyle(BAT_BY_ID.pallid.traits, BAT_BY_ID.pallid.stats.range)).toBe('splash');
+  });
+});

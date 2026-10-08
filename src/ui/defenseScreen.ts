@@ -7,7 +7,7 @@ import { SPELL_BY_ID } from '../data/spells';
 import { TERRAIN } from '../data/terrain';
 import type { Card } from '../data/types';
 import { Defense } from '../game/defense';
-import { blueprint, describeTrait } from '../game/progression';
+import { ATTACK_LABEL, attackLabel, attackStyle, blueprint, describeTrait } from '../game/progression';
 import { resolveBattle } from '../game/run';
 import { FieldRenderer, VIEW_H, VIEW_W, type Highlight } from '../render/fieldRenderer';
 import { registerScreen } from './app';
@@ -229,9 +229,10 @@ registerScreen('battle', (app) => {
     return { slots, pattern, batId, peek: peekTiles(), preview: null, footprint: new Set() };
   };
 
+  const bpOf = (c: Card) => blueprint(c.id, app.profile.roster[c.id], c.upgraded);
   const describeBat = (batId: string, upgraded: boolean): string => {
     const bp = blueprint(batId, app.profile.roster[batId], upgraded);
-    const traits = bp.traits.map(describeTrait).join(', ');
+    const traits = [attackLabel(bp.traits, bp.stats.range), ...bp.traits.filter((t) => t.kind !== 'multiHit' && t.kind !== 'aoe').map(describeTrait)].join(', ');
     const stackable = d.slots.some((s) => s.roost && d.canStackOn(s, batId));
     return `${bp.name}: roost ❤${bp.roost.hp}, keeps ${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''} out (❤${bp.stats.hp} ⚔${bp.stats.atk}), +1 every ${bp.roost.respawn}s${traits ? ' · ' + traits : ''}. `
       + (stackable ? 'Tap a blue roost to merge into it, or an empty tile.' : 'Tap a tile.');
@@ -338,8 +339,8 @@ registerScreen('battle', (app) => {
     h('span.cost', cost),
     kind === 'bat' ? batImg(id, 2) : h('div.spell-icon', SPELL_BY_ID[id].icon),
     h('div.hc-name', name.replace(/ Bat$/, '') + (card.upgraded ? '+' : '')),
-    clanPips(clans),
-    kind === 'bat' ? patternGrid(id, 'xs') : '',
+    kind === 'bat' ? h('div.hc-atk', clanPips(clans), ' ', ATTACK_LABEL[attackStyle(bpOf(card).traits, bpOf(card).stats.range)].icon) : clanPips(clans),
+    kind === 'bat' ? patternGrid(id, 'xs', d.patternOf(id)) : '',
     o.tag ? h('div.tax', o.tag) : '',
     );
   };

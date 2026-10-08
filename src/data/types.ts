@@ -65,6 +65,8 @@ export interface Palette {
 export interface BatDef {
   id: string;
   name: string;
+  /** Common name short enough for a roost tile (about 10 characters). */
+  short: string;
   species: string;
   clans: ClanId[];
   rarity: Rarity;
