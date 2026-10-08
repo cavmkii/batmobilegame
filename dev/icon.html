@@ -1,0 +1,21 @@
+<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;background:#000">
+<script type="module">
+import { batGrid, gridToCanvas } from '../src/render/pixel';
+import { BAT_BY_ID } from '../src/data/bats';
+// App icon: the Great Flying Fox commander on a night-sky tile with a moon.
+window.makeIcon = (size, padPct) => {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+  const sky = g.createLinearGradient(0, 0, 0, size); sky.addColorStop(0, '#1a1236'); sky.addColorStop(1, '#3a2458');
+  g.fillStyle = sky; g.fillRect(0, 0, size, size);
+  g.fillStyle = '#f4ecc8'; g.beginPath(); g.arc(size * 0.74, size * 0.26, size * 0.11, 0, Math.PI * 2); g.fill();
+  const def = BAT_BY_ID.flying_fox;
+  const grid = batGrid('flying_fox', 0);
+  const inner = size * (1 - padPct * 2);
+  const px = Math.floor(inner / grid[0].length);
+  const art = gridToCanvas(grid, { ...def.sprite.palette }, px);
+  g.drawImage(art, Math.round((size - art.width) / 2), Math.round((size - art.height) / 2 + size * 0.04));
+  return c.toDataURL('image/png');
+};
+document.body.dataset.ready = '1';
+</script></body></html>

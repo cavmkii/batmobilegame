@@ -52,11 +52,55 @@ registerScreen('battle', (app) => {
   // Exposed in dev builds so automated playtests can drive the level.
   if (import.meta.env.DEV) (window as unknown as { __defense: Defense }).__defense = d;
 
+  // ---------------- First-play tutorial ----------------
+  type Wait = 'next' | 'select' | 'preview' | 'placed' | 'endDay';
+  interface Step { text: string; target?: 'canvas' | 'cmd' | 'pool' | 'guano' | 'end'; wait: Wait; check?: () => boolean; showWhen?: () => boolean }
+  const STEPS: Step[] = [
+    { target: 'canvas', wait: 'next',
+      text: 'Welcome to the roost. Enemies come down from the top toward your cave at the bottom. During the day, the red columns show tonight\'s wave: what is coming, how many, and where.' },
+    { target: 'cmd', wait: 'select', check: () => sel?.kind === 'cmd',
+      text: 'Start with your commander, your strongest bat. Tap the gold card.' },
+    { target: 'canvas', wait: 'preview',
+      text: 'Tap a tile in a column the enemies will come down. That shows a preview first; nothing is spent yet.' },
+    { target: 'canvas', wait: 'placed',
+      text: 'This is the preview. Dashed tiles show the +1 spread this bat gives when it merges later. Tap the same tile again to build the roost (or another tile to move it).' },
+    { target: 'pool', wait: 'placed',
+      text: 'These two cards are your pool, drawn from your deck. A used card leaves its slot empty until dawn or a ↻ reroll. Tap a bat, then place it the same way: tap a tile, then tap again.' },
+    { target: 'guano', wait: 'next',
+      text: 'Guano pays for bats, rerolls and spells. Each dawn your roosts make more: +1 for every 2 bats you house. Building bats grows your income.' },
+    { target: 'end', wait: 'endDay', text: 'When you are ready, tap End day.' },
+    { target: 'canvas', wait: 'next', showWhen: () => d.phase === 'night',
+      text: 'Night. Each roost releases its bats as its timer ring fills, so your army grows through the night. Bats can\'t be placed now, but spells you hold work as instants.' },
+    { wait: 'next', showWhen: () => d.phase === 'day' && d.day >= 2,
+      text: 'Day 2. Two roosts of the same bat at the same level merge into one a level higher. Tap one roost, then the other (preview, then confirm). A merge also gives +1 to the roosts in that bat\'s pattern. Press and hold any bat card to see its pattern. Good luck!' },
+  ];
+  let tut = app.profile.tutorialDone ? -1 : 0;
+  if (tut === 0) d.guano += 4; // a little extra so the first commander and a pool bat are both affordable
+  const finishTutorial = () => {
+    tut = -1;
+    app.profile.tutorialDone = true;
+    app.save();
+  };
+  const advance = () => {
+    tut++;
+    if (tut >= STEPS.length) finishTutorial();
+  };
+  const coach = h('div.coach');
+
   const canvas = h('canvas.field-canvas');
   const renderer = new FieldRenderer(canvas, d);
   let sel: Sel = null;
   let speed = 1;
   let note = '';
+  /** Tile being previewed; a second tap on it confirms. */
+  let pending: number | null = null;
+  // Filled in by the tutorial further down; a no-op when it isn't running.
+  let onTutorial: (event: string) => void = () => {};
+  onTutorial = (ev) => {
+    if (tut < 0) return;
+    const st = STEPS[tut];
+    if (st.wait === ev && (!st.check || st.check())) advance();
+  };
   // Press and hold a bat card or a roost to preview which tiles its pattern gives +1.
   let peek: { batId: string; from: number | null } | null = null;
   let holdTimer = 0;
@@ -88,7 +132,7 @@ registerScreen('battle', (app) => {
   const guano = h('div.guano');
   const piles = h('span.small.muted');
   const refreshBtn = h('button.refresh', { onclick: () => { if (d.refresh()) { sel = null; note = 'New cards in the pool.'; } } });
-  const endBtn = h('button.primary.end-day', { onclick: () => { sel = null; note = ''; meet(); d.endDay(); } }, 'End day ☾');
+  const endBtn = h('button.primary.end-day', { onclick: () => { sel = null; pending = null; note = ''; meet(); d.endDay(); onTutorial('endDay'); } }, 'End day ☾');
   const speedBtn = h('button.ghost.small', { onclick: () => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; speedBtn.textContent = `${speed}×`; } }, '1×');
   const cards = h('div.hand-row');
   const overlay = h('div.battle-overlay');
@@ -104,9 +148,36 @@ registerScreen('battle', (app) => {
   };
   const selSource = () => (sel?.kind === 'cmd' ? 'cmd' : sel?.kind === 'pool' ? sel.i : null);
 
+  /** Text for the preview step: what confirming will do. */
+  const previewNote = (slot: number): string => {
+    const s = d.slots[slot];
+    const batId = previewBat()!;
+    const name = BAT_BY_ID[batId].name;
+    if (s.roost) {
+      const bumps = d.patternTiles(slot, batId).filter((t) => t.roost && !(sel?.kind === 'roost' && t.idx === sel.idx)).length;
+      return `Preview: merge into level ${s.roost.level + 1}${bumps ? `, and +1 to ${bumps} roost${bumps > 1 ? 's' : ''} in its pattern` : ''}. Tap the tile again to confirm.`;
+    }
+    const t = s.terrain && d.terrainMatches(slot, batId) ? ` On its home terrain: ${TERRAIN[s.terrain].desc}` : '';
+    return `Preview: build a ${name} roost here.${t} The dashed tiles are what it will +1 when it merges later. Tap the tile again to confirm.`;
+  };
+  /** The bat a preview would put down (pool card, commander, or a roost being merged). */
+  const previewBat = (): string | null => (sel?.kind === 'roost' ? d.slots[sel.idx].roost?.batId ?? null : selectedBat());
+
   const highlight = (): Highlight => {
     const slots = new Map<number, 'ok' | 'bonus' | 'stack' | 'from'>();
     const pattern = new Set<number>();
+    if (pending !== null && previewBat()) {
+      const batId = previewBat()!;
+      const s = d.slots[pending];
+      const peek = new Set<number>();
+      const footprint = new Set<number>();
+      if (s.roost) {
+        peek.add(pending);
+        for (const t of d.patternTiles(pending, batId)) if (t.roost && !(sel?.kind === 'roost' && t.idx === sel.idx)) peek.add(t.idx);
+      } else for (const t of d.patternTiles(pending, batId)) footprint.add(t.idx);
+      if (sel?.kind === 'roost') slots.set(sel.idx, 'from');
+      return { slots, pattern, batId, peek, preview: { slot: pending, batId, merge: !!s.roost }, footprint };
+    }
     if (sel?.kind === 'roost' && d.phase === 'day' && d.slots[sel.idx].roost) {
       slots.set(sel.idx, 'from');
       const batId = d.slots[sel.idx].roost!.batId;
@@ -114,7 +185,7 @@ registerScreen('battle', (app) => {
         slots.set(t.idx, 'stack');
         for (const p of d.patternTiles(t.idx, batId)) if (p.roost && p.idx !== sel.idx) pattern.add(p.idx);
       }
-      return { slots, pattern, batId, peek: peekTiles() };
+      return { slots, pattern, batId, peek: peekTiles(), preview: null, footprint: new Set() };
     }
     const batId = selectedBat();
     const src = selSource();
@@ -127,7 +198,7 @@ registerScreen('battle', (app) => {
         } else slots.set(s.idx, d.terrainMatches(s.idx, batId) ? 'bonus' : 'ok');
       }
     }
-    return { slots, pattern, batId, peek: peekTiles() };
+    return { slots, pattern, batId, peek: peekTiles(), preview: null, footprint: new Set() };
   };
 
   const describeBat = (batId: string, upgraded: boolean, isCmd: boolean): string => {
@@ -141,6 +212,7 @@ registerScreen('battle', (app) => {
   const onPool = (i: number) => {
     const c = d.pool[i];
     if (!c) return;
+    pending = null;
     const s: Sel = { kind: 'pool', i };
     if (c.kind === 'spell' && same(sel, s)) {
       if (d.takeSpell(i)) note = `${SPELL_BY_ID[c.id].name} added to your spells.`;
@@ -150,6 +222,7 @@ registerScreen('battle', (app) => {
     }
     sel = same(sel, s) ? null : s;
     note = '';
+    if (sel && c.kind === 'bat') onTutorial('select');
   };
 
   const onSpell = (i: number) => {
@@ -175,22 +248,32 @@ registerScreen('battle', (app) => {
     if (slot < 0) return;
     const held = d.slots[slot].roost;
     if (held) startHold(held.batId, slot);
-    if (sel?.kind === 'roost' && d.canMerge(sel.idx, slot)) {
-      d.merge(sel.idx, slot);
-      const ro = d.slots[slot].roost!;
-      note = `Merged: ${ro.bp.name} level ${ro.level}${d.isMega(ro) ? ', MEGA BAT!' : '.'}`;
-      sel = null;
-      return;
-    }
+    // Placing and merging are two taps on the tile: the first previews, the second confirms.
     const src = selSource();
-    if (src !== null && selectedBat() && d.canPlace(src, slot)) {
-      const stacking = !!d.slots[slot].roost;
-      d.place(src, slot);
-      const ro = d.slots[slot].roost!;
-      note = stacking ? `Level ${ro.level}${d.isMega(ro) ? ': MEGA BAT!' : '.'}` : '';
-      sel = null;
+    const canAct = (sel?.kind === 'roost' && d.canMerge(sel.idx, slot)) || (src !== null && !!selectedBat() && d.canPlace(src, slot));
+    if (canAct && pending !== slot) {
+      pending = slot;
+      note = previewNote(slot);
+      onTutorial('preview');
       return;
     }
+    if (canAct && pending === slot) {
+      pending = null;
+      if (sel?.kind === 'roost') {
+        d.merge(sel.idx, slot);
+        const ro = d.slots[slot].roost!;
+        note = `Merged: ${ro.bp.name} level ${ro.level}${d.isMega(ro) ? ', MEGA BAT!' : '.'}`;
+      } else {
+        const stacking = !!d.slots[slot].roost;
+        d.place(src!, slot);
+        const ro = d.slots[slot].roost!;
+        note = stacking ? `Merged: level ${ro.level}${d.isMega(ro) ? ', MEGA BAT!' : '.'}` : `${ro.bp.name} roost built.`;
+      }
+      sel = null;
+      onTutorial('placed');
+      return;
+    }
+    pending = null;
     const s = d.slots[slot];
     if (s.roost && d.phase === 'day' && !s.roost.isCommander && !(sel?.kind === 'roost' && sel.idx === slot)) {
       // Pick this roost up to merge it into a matching one.
@@ -243,7 +326,7 @@ registerScreen('battle', (app) => {
     caveText.textContent = `${Math.max(0, Math.round(d.cave.hp))}`;
     endBtn.style.display = isDay ? '' : 'none';
     speedBtn.style.display = isDay ? 'none' : '';
-    const k = [d.phase, d.day, d.guano, JSON.stringify(peek), JSON.stringify(sel), d.commander.inPlay, d.commander.casts,
+    const k = [d.phase, d.day, d.guano, JSON.stringify(peek), pending, tut, JSON.stringify(sel), d.commander.inPlay, d.commander.casts,
       d.pool.map((c) => c?.uid ?? '-').join(','), d.spells.map((c) => c.uid).join(','), note,
       d.slots.map((s) => (s.roost ? `${s.roost.batId}${s.roost.level}` : 0)).join('.')].join('|');
     if (k === key) return;
@@ -261,7 +344,7 @@ registerScreen('battle', (app) => {
     cards.replaceChildren(
       cardEl({
         card: null, isCmd: true, sel: { kind: 'cmd' }, playable: cmdPlayable,
-        onTap: () => { sel = same(sel, { kind: 'cmd' }) ? null : { kind: 'cmd' }; note = ''; },
+        onTap: () => { pending = null; sel = same(sel, { kind: 'cmd' }) ? null : { kind: 'cmd' }; note = ''; onTutorial('select'); },
         tag: d.commander.inPlay ? 'in play' : d.commander.casts ? `tax +${d.commander.casts * BALANCE.commander.tax}` : 'place me',
       }),
       h('div.row-label', 'pool'),
@@ -305,6 +388,30 @@ registerScreen('battle', (app) => {
         : 'Bats fly out on their own. Spells are instants: tap one twice to cast.';
     }
     info.textContent = text;
+
+    // Tutorial bubble and highlight.
+    const st = tut >= 0 ? STEPS[tut] : null;
+    const showing = !!st && (!st.showWhen || st.showWhen());
+    coach.style.display = showing ? '' : 'none';
+    for (const el of document.querySelectorAll('.coach-target')) el.classList.remove('coach-target');
+    if (showing && st) {
+      coach.replaceChildren(
+        h('div.coach-step', `Tutorial ${tut + 1}/${STEPS.length}`),
+        h('div', st.text),
+        h('div.coach-actions',
+          h('button.ghost.small', { onclick: () => { finishTutorial(); key = ''; } }, 'Skip tutorial'),
+          st.wait === 'next' ? h('button.primary.small', { onclick: () => { advance(); key = ''; } }, tut === STEPS.length - 1 ? 'Got it' : 'Next') : null,
+        ),
+      );
+      const targets: Record<string, Element[]> = {
+        canvas: [canvas],
+        cmd: [cards.children[0]],
+        pool: [...cards.querySelectorAll('.hand-card:not(.commander)')].slice(0, 2),
+        guano: [guano],
+        end: [endBtn],
+      };
+      for (const el of targets[st.target ?? ''] ?? []) el?.classList.add('coach-target');
+    }
   };
 
   let last = performance.now();
@@ -345,6 +452,7 @@ registerScreen('battle', (app) => {
 
   const showResult = () => {
     const won = d.phase === 'won';
+    if (tut >= 0) finishTutorial();
     resolveBattle(r, won, d.cave.hp);
     app.save();
     overlay.classList.add('show');
@@ -361,7 +469,7 @@ registerScreen('battle', (app) => {
       h('div.cave-mini', h('span.small', '🏔'), h('div.hpbar', caveFill), caveText),
       speedBtn,
     ),
-    h('div.canvas-wrap', canvas, overlay),
+    h('div.canvas-wrap', canvas, coach, overlay),
     info,
     h('div.def-controls', guano, piles, endBtn),
     cards,

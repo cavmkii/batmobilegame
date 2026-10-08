@@ -5,6 +5,18 @@ cave over day/night rounds: by day, play bat cards to build roosts; by night, th
 own and you cast spells as instants. It sits inside a Slay the Spire–style roguelite run.
 Design: [DESIGN.md](DESIGN.md).
 
+## Play it on your phone
+
+Every push to `main` publishes the game to **https://cavmkii.github.io/batmobilegame/**
+(GitHub Pages, via `.github/workflows/deploy.yml`; tests must pass first).
+
+**iPhone:** open that link in **Safari**, tap the **Share** button, choose **Add to Home Screen**.
+It then opens full-screen like an app, and works offline after the first load.
+The home-screen app has its own save, separate from Safari. Use *Back up / restore save*
+on the home screen to keep a copy, since iOS can clear data for web apps left unused for weeks.
+
+One-time setup (repo owner): Settings → Pages → Build and deployment → Source: **GitHub Actions**.
+
 ## Run it
 
 ```sh
@@ -16,6 +28,7 @@ npm run build      # typecheck + production bundle in dist/
 
 Dev helpers:
 - `/dev/sprites.html`: contact sheet of every sprite (for checking or replacing art).
+- `/dev/icon.html`: draws the app icon from the pixel art (used to generate `public/icons/`).
 - `window.batmobile` in the console is the app. For example, `batmobile.profile.xp += 10000; batmobile.save(); batmobile.refresh()`.
 - In dev builds `window.__defense` is the live level simulation.
 
