@@ -3,7 +3,7 @@ import { CLANS, RARITY_COLOR } from '../data/clans';
 import { RELIC_BY_ID } from '../data/relics';
 import { SPELL_BY_ID } from '../data/spells';
 import type { Card, ClanId, Rarity } from '../data/types';
-import { blueprint, describeTrait, displayName, type OwnedBat } from '../game/progression';
+import { attackLabel, blueprint, describeTrait, displayName, type OwnedBat } from '../game/progression';
 import { batImageUrl } from '../render/pixel';
 import { h } from './dom';
 
@@ -41,7 +41,8 @@ export function cardFace(card: Pick<Card, 'kind' | 'id' | 'upgraded'>, owned?: O
     sub = def.basic ? 'Basic' : lvl;
     lines = [
       `Roost ❤${fmt(bp.roost.hp)} · up to ${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''}, +${bp.roost.batch} every ${bp.roost.respawn}s`,
-      `Each bat ❤${fmt(bp.stats.hp)} ⚔${fmt(bp.stats.atk)} ${bp.stats.range >= 100 ? 'ranged' : 'melee'}`,
+      attackLabel(bp.traits, bp.stats.range),
+      `Each bat ❤${fmt(bp.stats.hp)} ⚔${fmt(bp.stats.atk)} every ${bp.stats.rate}s`,
       ...bp.traits.map(describeTrait),
     ];
   } else {
@@ -59,7 +60,7 @@ export function cardFace(card: Pick<Card, 'kind' | 'id' | 'upgraded'>, owned?: O
     h('div.cf-name', name + (card.upgraded ? '+' : '')),
     h('div.cf-sub', sub),
     !opts.compact && h('div.cf-lines', ...lines.map((l) => h('div', l))),
-    card.kind === 'bat' && !opts.compact ? patternGrid(card.id) : null,
+    card.kind === 'bat' && !opts.compact ? patternGrid(card.id, 'sm', blueprint(card.id, owned).pattern) : null,
     opts.footer && h('div.cf-footer', opts.footer),
   );
 }
@@ -68,8 +69,8 @@ export function cardFace(card: Pick<Card, 'kind' | 'id' | 'upgraded'>, owned?: O
  * The tiles a bat's roost also levels when you stack it, as a small grid.
  * The centre is the roost; up is toward the enemies.
  */
-export function patternGrid(batId: string, size: 'sm' | 'xs' = 'sm') {
-  const pat = BAT_BY_ID[batId].pattern;
+export function patternGrid(batId: string, size: 'sm' | 'xs' = 'sm', pattern?: [number, number][]) {
+  const pat = pattern ?? BAT_BY_ID[batId].pattern;
   if (!pat.length) return h(`div.pattern.${size}.none`, 'no spread');
   const reach = Math.max(1, ...pat.map(([c, r]) => Math.max(Math.abs(c), Math.abs(r))));
   const cells: Node[] = [];

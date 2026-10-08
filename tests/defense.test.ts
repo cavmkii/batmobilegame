@@ -9,7 +9,7 @@ import { buildStartingDeck, newCard } from '../src/game/deck';
 import { newOwnedBat, type OwnedBat } from '../src/game/progression';
 
 const roster = (ids: string[], level = 1): Record<string, OwnedBat> =>
-  Object.fromEntries(ids.map((id) => [id, { ...newOwnedBat(), level }]));
+  Object.fromEntries(ids.map((id) => [id, { ...newOwnedBat(), level, skills: [0, 0, 0] }]));
 
 function cfg(over: Partial<DefenseConfig> = {}): DefenseConfig {
   return {
@@ -405,6 +405,7 @@ describe('balance smoke', () => {
     'fox drafted L1': { mat: 'flying_fox', flock: ['egyptian_fruit', 'pallas_tongue', 'little_brown'], level: 1, extra: drafted() },
     'ghost starter L5': { mat: 'ghost_bat', flock: ['little_brown', 'common_vampire', 'egyptian_fruit'], extra: [], level: 5 },
     'fox drafted L5': { mat: 'flying_fox', flock: ['egyptian_fruit', 'pallas_tongue', 'little_brown'], level: 5, extra: drafted() },
+    'ghost starter L9 + skills': { mat: 'ghost_bat', flock: ['little_brown', 'common_vampire', 'egyptian_fruit'], extra: [], level: 9 },
   };
   for (const [name, d] of Object.entries(decks)) {
     it(name, () => {

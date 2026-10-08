@@ -6,8 +6,10 @@ import { flockOptions, validateSetup } from '../game/deck';
 import { canTakePlus, pull, resolveDupe, type PullResult } from '../game/gacha';
 import { chooseStarter, exportSave, importSave, resetProfile } from '../game/profile';
 import {
-  blueprint, canEvolve, canLevelUp, canTalent, describeTrait, displayName, dupeXp, evolveCost, levelCap, levelUpCost, talentCost,
+  attackLabel, blueprint, canEvolve, canLevelUp, canTalent, chooseSkill, describeTrait, displayName, dupeXp, evolveCost, levelCap, levelUpCost,
+  skillsReady, talentCost,
 } from '../game/progression';
+import { SKILL_LEVELS, SKILL_TREES, describeSkill } from '../data/skills';
 import { Rng, newSeed } from '../game/rng';
 import { startRun } from '../game/run';
 import { COLLECTABLE, MILESTONES, REGION, REGION_ICON, REGION_SETS, REGIONS, STATUS, regionMembers, type Reward } from '../data/fieldguide';
@@ -134,7 +136,7 @@ registerScreen('roster', (app) => {
     batImg(b.id, 2),
     h('div.rc-name', o ? displayName(b, o) : '???'),
     o ? h('div.rc-lvl', `Lv ${o.level}${o.plus ? `+${o.plus}` : ''}${o.evolved ? ' ★' : ''}`) : h('div.rc-lvl', `${where ? REGION_ICON[where] + ' ' : ''}${b.rarity}`),
-    up ? h('span.dot') : null,
+    up || skillsReady(b.id, o) ? h('span.dot') : null,
     );
   };
 
@@ -258,8 +260,9 @@ registerScreen('bat', (app, s) => {
       h('tr', h('td', 'Attack'), h('td', fmt(bp.stats.atk)), h('td', 'Range'), h('td', bp.stats.range)),
       h('tr', h('td', 'Rate'), h('td', `${bp.stats.rate}s`), h('td', 'Speed'), h('td', Math.round(bp.stats.speed))),
       h('tr', h('td', 'Roost HP'), h('td', fmt(bp.roost.hp)), h('td', 'Max bats'), h('td', bp.roost.count)),
-      h('tr', h('td', 'Refill'), h('td', `${bp.roost.respawn}s`), h('td', 'Spread'), h('td', patternGrid(s.id, 'xs'))),
+      h('tr', h('td', 'Refill'), h('td', `${bp.roost.respawn}s`), h('td', 'Spread'), h('td', patternGrid(s.id, 'xs', bp.pattern))),
     ),
+    def.matriarch ? null : h('p.small', attackLabel(bp.traits, bp.stats.range)),
     def.matriarch ? h('p', h('b', MATRIARCH_BY_ID[s.id].rule), ' ', h('span.muted', MATRIARCH_BY_ID[s.id].why)) : null,
     def.matriarch ? h('p.small', `Matriarchs don't fight. Every ${MATRIARCH_GUANO_EVERY} levels she adds +1 starting guano to each level of a run she leads (now +${matriarchGuano(o.level, o.plus)}).`) : null,
     bp.traits.length && !def.matriarch ? h('ul.traits', ...bp.traits.map((t) => h('li', describeTrait(t)))) : null,
@@ -272,6 +275,23 @@ registerScreen('bat', (app, s) => {
           `Evolve → ${def.evolved.name}  ✨${fmt(evolveCost(def))}`, o.level < BALANCE.levelCap ? h('div.small', `Needs Lv ${BALANCE.levelCap}`) : null)
         : null,
     ),
+    SKILL_TREES[s.id] ? h('section',
+      h('h2', 'Skill tree'),
+      h('p.muted.small', `A choice unlocks at Lv ${SKILL_LEVELS.join(', ')}. Pick one skill from each pair; you can switch any time between levels.`),
+      ...SKILL_TREES[s.id].map((pair, fork) => {
+        const need = SKILL_LEVELS[fork];
+        const open = o.level >= need;
+        const picked = o.skills?.[fork];
+        return h(`div.skill-fork${open ? '' : '.locked'}`,
+          h('div.sf-lvl', open ? `Lv ${need}` : `🔒${need}`),
+          ...pair.map((node, i) => h(`button.skill${picked === i ? '.chosen' : ''}`, {
+            disabled: !open,
+            onclick: act(() => chooseSkill(o, fork, i as 0 | 1)),
+          }, h('b', node.name), h('div.small', describeSkill(node.effect, describeTrait)))),
+        );
+      }),
+      skillsReady(s.id, o) ? h('p.small.accent', 'A skill is ready: pick one above.') : null,
+    ) : null,
     !def.basic ? h('section',
       h('h2', 'Talents'),
       !o.evolved ? h('p.muted', 'Unlocked after evolution.') : null,

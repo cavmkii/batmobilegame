@@ -5,6 +5,7 @@ import { BIOME_BY_ID } from '../data/setup';
 import { TERRAIN } from '../data/terrain';
 import type { Defense } from '../game/defense';
 import { Rng } from '../game/rng';
+import { attackStyle, type AttackStyle } from '../game/progression';
 import { batSprite, enemySprite } from './pixel';
 
 const F = BALANCE.field;
@@ -13,6 +14,8 @@ export const VIEW_H = 460;
 const TX = VIEW_W / F.cols;
 const TY = 42;
 const OY = 22;
+/** Backing-store pixels per view unit: sharper text on phone screens; pixel art stays crisp. */
+const RES = 3;
 
 export const toScreen = (x: number, y: number) => ({ sx: x * TX, sy: OY + y * TY });
 
@@ -35,9 +38,10 @@ export class FieldRenderer {
   private bg: HTMLCanvasElement;
 
   constructor(canvas: HTMLCanvasElement, private d: Defense) {
-    canvas.width = VIEW_W;
-    canvas.height = VIEW_H;
+    canvas.width = VIEW_W * RES;
+    canvas.height = VIEW_H * RES;
     this.g = canvas.getContext('2d')!;
+    this.g.setTransform(RES, 0, 0, RES, 0, 0);
     this.g.imageSmoothingEnabled = false;
     this.bg = makeBackground(BIOME_BY_ID[d.biome]?.tint ?? '#14201a');
   }
@@ -204,11 +208,19 @@ export class FieldRenderer {
       g.drawImage(img, sx - img.width / 2, sy - img.height / 2);
       g.globalAlpha = 1;
     }
-    // Clan stripe
+    // Clan pips (top left), attack-style glyph, and the common name along the bottom.
     def.clans.forEach((c, i) => {
       g.fillStyle = CLANS[c].color;
-      g.fillRect(x0 + 2 + i * 5, y0 + h - 6, 4, 4);
+      g.fillRect(x0 + 2 + i * 5, y0 + 1, 4, 4);
     });
+    drawAttackGlyph(g, attackStyle(r.bp.traits, r.bp.stats.range), x0 + 6, y0 + 17, CLANS[def.clans[0]]?.color ?? '#d8d0e8');
+    g.font = 'bold 7.5px sans-serif';
+    g.textAlign = 'center';
+    g.lineWidth = 2.5;
+    g.strokeStyle = 'rgba(0,0,0,0.85)';
+    g.strokeText(def.short, sx, y0 + h - 5);
+    g.fillStyle = '#f2ecff';
+    g.fillText(def.short, sx, y0 + h - 5);
     // Refill progress toward the next bat (night only).
     if (this.d.phase === 'night' && r.respawnTimer > 0) {
       const p = Math.min(1, r.respawnTimer / this.d.respawnTime(r));
@@ -307,16 +319,6 @@ export class FieldRenderer {
       const len = Math.hypot(dx, dy) || 1;
       sx += (dx / len) * 3;
       sy += (dy / len) * 3;
-      if (u.side === 'bat' && u.stats.range > 0.8) {
-        // Ranged bats: a sonar streak to the target.
-        const a = toScreen(u.aimX, u.aimY);
-        g.strokeStyle = 'rgba(160,220,255,0.6)';
-        g.lineWidth = 1;
-        g.beginPath();
-        g.moveTo(sx, sy);
-        g.lineTo(a.sx, a.sy);
-        g.stroke();
-      }
     }
     if (u.stunTimer > 0) g.globalAlpha = 0.7;
     g.drawImage(img, Math.round(sx - img.width / 2), Math.round(sy - img.height / 2));
@@ -343,9 +345,119 @@ export class FieldRenderer {
     }
   }
 
+  /** Attacks, drawn by style so melee, sonar, multi-hit, splash and lifesteal read differently. */
+  private drawStrikes() {
+    const g = this.g;
+    const d = this.d;
+    for (const s of d.strikes) {
+      const age = (d.clock - s.t) / 0.45;
+      if (age > 1) continue;
+      const a = toScreen(s.fx, s.fy);
+      const b = toScreen(s.tx, s.ty);
+      const ang = Math.atan2(b.sy - a.sy, b.sx - a.sx);
+      g.save();
+      g.strokeStyle = s.color;
+      g.fillStyle = s.color;
+      g.lineCap = 'round';
+      switch (s.style) {
+        case 'bite':
+        case 'enemy': {
+          // Three claw marks across the target.
+          const k = Math.min(1, age * 4);
+          g.globalAlpha = 1 - age;
+          g.lineWidth = s.style === 'enemy' ? 1.2 : 1.6;
+          g.translate(b.sx, b.sy);
+          g.rotate(ang + Math.PI / 4);
+          for (let i = -1; i <= 1; i++) {
+            g.beginPath();
+            g.moveTo(-5 * k, i * 2.6 - 1);
+            g.lineTo(5 * k, i * 2.6 + 1);
+            g.stroke();
+          }
+          break;
+        }
+        case 'sonar': {
+          // Sound waves travelling to the target.
+          const p = Math.min(1, age * 2.2);
+          g.globalAlpha = p >= 1 ? 1 - age : 0.9;
+          g.lineWidth = 1.8;
+          const x = a.sx + (b.sx - a.sx) * p;
+          const y = a.sy + (b.sy - a.sy) * p;
+          for (let i = 0; i < 3; i++) {
+            g.beginPath();
+            g.arc(x - Math.cos(ang) * i * 4, y - Math.sin(ang) * i * 4, 4.5 + i * 2, ang - 0.8, ang + 0.8);
+            g.stroke();
+          }
+          break;
+        }
+        case 'chain': {
+          // A jagged line to each target hit.
+          g.globalAlpha = 1 - age;
+          const n = 5;
+          // Bright core over a clan-coloured glow.
+          g.shadowColor = s.color;
+          g.shadowBlur = 4;
+          g.lineWidth = 2;
+          g.beginPath();
+          g.moveTo(a.sx, a.sy);
+          for (let i = 1; i < n; i++) {
+            const t = i / n;
+            const off = (i % 2 ? 1 : -1) * 3;
+            g.lineTo(a.sx + (b.sx - a.sx) * t - Math.sin(ang) * off, a.sy + (b.sy - a.sy) * t + Math.cos(ang) * off);
+          }
+          g.lineTo(b.sx, b.sy);
+          g.stroke();
+          g.strokeStyle = 'rgba(255,255,255,0.7)';
+          g.lineWidth = 0.7;
+          g.stroke();
+          g.beginPath();
+          g.arc(b.sx, b.sy, 2.5, 0, Math.PI * 2);
+          g.fill();
+          break;
+        }
+        case 'splash': {
+          // A burst at the target: ring plus spokes.
+          g.globalAlpha = 1 - age;
+          g.lineWidth = 1.5;
+          const r = 4 + age * 18;
+          g.beginPath();
+          g.arc(b.sx, b.sy, r, 0, Math.PI * 2);
+          g.stroke();
+          for (let i = 0; i < 6; i++) {
+            const t = (i / 6) * Math.PI * 2;
+            g.beginPath();
+            g.moveTo(b.sx + Math.cos(t) * r * 0.4, b.sy + Math.sin(t) * r * 0.4);
+            g.lineTo(b.sx + Math.cos(t) * r * 0.8, b.sy + Math.sin(t) * r * 0.8);
+            g.stroke();
+          }
+          break;
+        }
+        case 'enemyShot': {
+          const p = Math.min(1, age * 2.5);
+          g.globalAlpha = 1 - age * 0.6;
+          g.beginPath();
+          g.arc(a.sx + (b.sx - a.sx) * p, a.sy + (b.sy - a.sy) * p, 2, 0, Math.PI * 2);
+          g.fill();
+          break;
+        }
+        case 'drain': {
+          // Blood drops flowing back to the biter.
+          g.globalAlpha = 1 - age;
+          for (let i = 0; i < 3; i++) {
+            const p = Math.min(1, age * 2 + i * 0.15);
+            g.fillRect(a.sx + (b.sx - a.sx) * p - 1, a.sy + (b.sy - a.sy) * p - 1, 2, 2);
+          }
+          break;
+        }
+      }
+      g.restore();
+    }
+  }
+
   private drawFx() {
     const g = this.g;
     const d = this.d;
+    this.drawStrikes();
     for (const fx of d.effects) {
       const age = (d.clock - fx.t) / 0.8;
       const { sx, sy } = toScreen(fx.x, fx.y);
@@ -371,6 +483,32 @@ export class FieldRenderer {
     }
     g.globalAlpha = 1;
   }
+}
+
+/** Small icon for how a roost's bats attack. */
+function drawAttackGlyph(g: CanvasRenderingContext2D, style: AttackStyle, x: number, y: number, color: string) {
+  g.save();
+  g.strokeStyle = color;
+  g.fillStyle = color;
+  g.lineWidth = 1.2;
+  g.lineCap = 'round';
+  g.beginPath();
+  if (style === 'bite') {
+    for (let i = -1; i <= 1; i++) { g.moveTo(x - 3, y + i * 2.5 - 1); g.lineTo(x + 3, y + i * 2.5 + 1); }
+  } else if (style === 'sonar') {
+    for (let i = 0; i < 3; i++) {
+      const r = 2 + i * 2;
+      g.moveTo(x - 3 + Math.cos(-0.7) * r, y + Math.sin(-0.7) * r);
+      g.arc(x - 3, y, r, -0.7, 0.7);
+    }
+  } else if (style === 'chain') {
+    g.moveTo(x - 3, y); g.lineTo(x, y); g.lineTo(x + 3, y - 3); g.moveTo(x, y); g.lineTo(x + 3, y + 3);
+  } else {
+    g.arc(x, y, 3.2, 0, Math.PI * 2);
+    for (let i = 0; i < 4; i++) { const t = (i / 4) * Math.PI * 2 + 0.4; g.moveTo(x + Math.cos(t) * 4, y + Math.sin(t) * 4); g.lineTo(x + Math.cos(t) * 6, y + Math.sin(t) * 6); }
+  }
+  g.stroke();
+  g.restore();
 }
 
 function makeBackground(ground: string): HTMLCanvasElement {
