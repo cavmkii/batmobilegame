@@ -67,7 +67,19 @@ function migrate(p: Profile) {
   const legacy = p as Profile & { cores?: unknown; lastCommander?: string };
   p.lastMatriarch ??= legacy.lastCommander;
   delete legacy.cores;
-  for (const o of Object.values(p.roster)) o.skills ??= [];
+  for (const [id, o] of Object.entries(p.roster)) {
+    o.skills ??= [];
+    // Talents became the evolved skill fork: keep the first one bought, refund the other.
+    if (o.talents) {
+      const [a, b] = o.talents;
+      if (a || b) {
+        while (o.skills.length < 4) o.skills.push(-1);
+        o.skills[3] = a ? 0 : 1;
+        if (a && b) p.xp += Math.round(BALANCE.xp.talent * BALANCE.xp.rarityMult[BAT_BY_ID[id].rarity]);
+      }
+      delete o.talents;
+    }
+  }
   p.saga ??= { unlocked: 1, stars: {} };
   if (p.run) {
     // Runs started before charms and the saga.

@@ -92,8 +92,8 @@ describe('progression', () => {
     expect(blueprint('egyptian_fruit', newOwnedBat(), true).stats.hp).toBe(286);
   });
 
-  it('applies talents', () => {
-    const o = { ...newOwnedBat(), evolved: true, talents: [false, true] as [boolean, boolean] };
+  it('applies the evolved fork (former talents)', () => {
+    const o = { ...newOwnedBat(), evolved: true, skills: [-1, -1, -1, 1] };
     expect(blueprint('egyptian_fruit', o).cost).toBe(BAT_BY_ID.egyptian_fruit.cost - 1);
   });
 });

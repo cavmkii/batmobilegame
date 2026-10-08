@@ -10,10 +10,10 @@ import { flockOptions, validateSetup } from '../game/deck';
 import { canTakePlus, pull, resolveDupe, type PullResult } from '../game/gacha';
 import { chooseStarter, exportSave, importSave, resetProfile } from '../game/profile';
 import {
-  attackLabel, blueprint, canEvolve, canLevelUp, canTalent, chooseSkill, describeTrait, displayName, dupeXp, evolveCost, levelCap, levelUpCost,
-  skillsReady, talentCost,
+  attackLabel, blueprint, canEvolve, canLevelUp, chooseSkill, describeTrait, displayName, dupeXp, evolveCost, forkUnlocked, levelCap, levelUpCost,
+  skillTree, skillsReady,
 } from '../game/progression';
-import { SKILL_LEVELS, SKILL_TREES, describeSkill } from '../data/skills';
+import { EVOLVED_FORK, SKILL_LEVELS, describeSkill } from '../data/skills';
 import { Rng, newSeed } from '../game/rng';
 import { startRun } from '../game/run';
 import { COLLECTABLE, MILESTONES, REGION, REGION_ICON, REGION_SETS, REGIONS, STATUS, regionMembers, type Reward } from '../data/fieldguide';
@@ -282,32 +282,23 @@ registerScreen('bat', (app, s) => {
           `Evolve → ${def.evolved.name}  ✨${fmt(evolveCost(def))}`, o.level < BALANCE.levelCap ? h('div.small', `Needs Lv ${BALANCE.levelCap}`) : null)
         : null,
     ),
-    SKILL_TREES[s.id] ? h('section',
+    skillTree(s.id) ? h('section',
       h('h2', 'Skill tree'),
-      h('p.muted.small', `A choice unlocks at Lv ${SKILL_LEVELS.join(', ')}. Pick one skill from each pair; you can switch any time between levels.`),
-      ...SKILL_TREES[s.id].map((pair, fork) => {
-        const need = SKILL_LEVELS[fork];
-        const open = o.level >= need;
+      h('p.muted.small', `A choice unlocks at Lv ${SKILL_LEVELS.join(', ')}, and one more when the bat evolves. Pick one skill from each pair; you can switch any time between levels.`),
+      ...skillTree(s.id)!.map((pair, fork) => {
+        const open = forkUnlocked(o, fork);
+        const label = fork === EVOLVED_FORK ? '★' : `Lv ${SKILL_LEVELS[fork]}`;
         const picked = o.skills?.[fork];
         return h(`div.skill-fork${open ? '' : '.locked'}`,
-          h('div.sf-lvl', open ? `Lv ${need}` : `🔒${need}`),
+          h('div.sf-lvl', open ? label : `🔒${fork === EVOLVED_FORK ? '★' : SKILL_LEVELS[fork]}`),
           ...pair.map((node, i) => h(`button.skill${picked === i ? '.chosen' : ''}`, {
             disabled: !open,
             onclick: act(() => chooseSkill(o, fork, i as 0 | 1)),
           }, h('b', node.name), h('div.small', describeSkill(node.effect, describeTrait)))),
         );
       }),
+      h('p.muted.small', '★ unlocks when the bat evolves.'),
       skillsReady(s.id, o) ? h('p.small.accent', 'A skill is ready: pick one above.') : null,
-    ) : null,
-    !def.basic ? h('section',
-      h('h2', 'Talents'),
-      !o.evolved ? h('p.muted', 'Unlocked after evolution.') : null,
-      ...def.talents.map((t, i) => h('div.talent',
-        h('div', h('b', t.name), h('div.muted', t.desc)),
-        o.talents[i]
-          ? h('span.tag', 'Learned')
-          : h('button', { disabled: !canTalent(def, o, i as 0 | 1, p.xp), onclick: act(() => { p.xp -= talentCost(def); o.talents[i] = true; }) }, `✨${fmt(talentCost(def))}`),
-      )),
     ) : null,
     def.evolved.trait ? h('p.muted.small', `Evolved form gains: ${describeTrait(def.evolved.trait)}. Stats ×${BALANCE.evolvedMult}.`) : null,
   );

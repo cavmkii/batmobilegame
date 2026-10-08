@@ -1,6 +1,6 @@
 import { BALANCE } from '../data/balance';
 import { BAT_BY_ID } from '../data/bats';
-import { SKILL_LEVELS, SKILL_TREES, type SkillNode } from '../data/skills';
+import { EVOLVED_FORK, SKILL_LEVELS, SKILL_TREES, type SkillNode } from '../data/skills';
 import type { BatDef, Stats, Trait } from '../data/types';
 
 /** Permanent per-bat progress. */
@@ -8,34 +8,47 @@ export interface OwnedBat {
   level: number;
   plus: number;
   evolved: boolean;
-  talents: [boolean, boolean];
+  /** Legacy: talents became the evolved skill fork (migrated on load). */
+  talents?: [boolean, boolean];
   /** Skill-tree picks per fork (0 or 1), -1 or missing = not chosen. */
   skills?: number[];
 }
 
-export const newOwnedBat = (): OwnedBat => ({ level: 1, plus: 0, evolved: false, talents: [false, false], skills: [] });
+export const newOwnedBat = (): OwnedBat => ({ level: 1, plus: 0, evolved: false, skills: [] });
 
-/** Forks this bat has unlocked (by roster level). */
-export const unlockedForks = (o: OwnedBat): number => SKILL_LEVELS.filter((l) => o.level >= l).length;
+/** A bat's full tree: three level forks, then the evolved fork (its two talents). */
+export function skillTree(batId: string): [SkillNode, SkillNode][] | null {
+  const tree = SKILL_TREES[batId];
+  const def = BAT_BY_ID[batId];
+  if (!tree || !def) return null;
+  return [...tree, [def.talents[0], def.talents[1]].map((t) => ({ name: t.name, effect: t.effect })) as [SkillNode, SkillNode]];
+}
+
+/** Level forks unlock by roster level; the last one by evolution. */
+export const forkUnlocked = (o: OwnedBat, fork: number): boolean =>
+  fork === EVOLVED_FORK ? o.evolved : o.level >= SKILL_LEVELS[fork];
 
 /** The skills that apply: chosen and unlocked. */
 export function activeSkills(batId: string, o: OwnedBat | undefined): SkillNode[] {
-  const tree = SKILL_TREES[batId];
+  const tree = skillTree(batId);
   if (!tree || !o) return [];
   const out: SkillNode[] = [];
-  for (let i = 0; i < unlockedForks(o); i++) {
+  tree.forEach((pair, i) => {
     const pick = o.skills?.[i];
-    if (pick === 0 || pick === 1) out.push(tree[i][pick]);
-  }
+    if (forkUnlocked(o, i) && (pick === 0 || pick === 1)) out.push(pair[pick]);
+  });
   return out;
 }
 
 /** Unlocked forks with no pick yet (for "skill ready" badges). */
-export const skillsReady = (batId: string, o: OwnedBat | undefined): number =>
-  !o || !SKILL_TREES[batId] ? 0 : Array.from({ length: unlockedForks(o) }, (_, i) => o.skills?.[i]).filter((x) => x !== 0 && x !== 1).length;
+export function skillsReady(batId: string, o: OwnedBat | undefined): number {
+  const tree = skillTree(batId);
+  if (!tree || !o) return 0;
+  return tree.filter((_, i) => forkUnlocked(o, i) && o.skills?.[i] !== 0 && o.skills?.[i] !== 1).length;
+}
 
 export function chooseSkill(o: OwnedBat, fork: number, pick: 0 | 1) {
-  if (fork >= unlockedForks(o)) return;
+  if (!forkUnlocked(o, fork)) return;
   o.skills ??= [];
   while (o.skills.length <= fork) o.skills.push(-1);
   o.skills[fork] = pick;
@@ -49,14 +62,11 @@ export const levelUpCost = (def: BatDef, o: OwnedBat): number =>
   Math.round(BALANCE.xp.perLevel * rm(def) * o.level);
 
 export const evolveCost = (def: BatDef): number => Math.round(BALANCE.xp.evolve * rm(def));
-export const talentCost = (def: BatDef): number => Math.round(BALANCE.xp.talent * rm(def));
 export const dupeXp = (def: BatDef): number => BALANCE.xp.dupeValue[def.rarity];
 
 export const canLevelUp = (def: BatDef, o: OwnedBat, xp: number) => o.level < levelCap(o) && xp >= levelUpCost(def, o);
 export const canEvolve = (def: BatDef, o: OwnedBat, xp: number) =>
   !def.basic && !o.evolved && o.level >= BALANCE.levelCap && xp >= evolveCost(def);
-export const canTalent = (def: BatDef, o: OwnedBat, i: 0 | 1, xp: number) =>
-  o.evolved && !o.talents[i] && xp >= talentCost(def);
 
 export const displayName = (def: BatDef, o?: OwnedBat): string => (o?.evolved ? def.evolved.name : def.name);
 
@@ -72,7 +82,7 @@ export interface UnitBlueprint {
 }
 
 /**
- * Final in-battle stats for a bat: roster level (incl. plus-levels), evolution, talents,
+ * Final in-battle stats for a bat: roster level (incl. plus-levels), evolution, skills,
  * and the in-run card upgrade. Unowned bats (drafted) fight at level 1.
  */
 export function blueprint(batId: string, owned: OwnedBat | undefined, upgradedCard = false): UnitBlueprint {
@@ -90,15 +100,6 @@ export function blueprint(batId: string, owned: OwnedBat | undefined, upgradedCa
     atkMult *= BALANCE.evolvedMult;
     if (def.evolved.trait) mergeTrait(traits, def.evolved.trait);
   }
-  def.talents.forEach((t, i) => {
-    if (!o.talents[i]) return;
-    const e = t.effect;
-    if (e.kind === 'hpPct') hpMult *= 1 + e.pct / 100;
-    else if (e.kind === 'atkPct') atkMult *= 1 + e.pct / 100;
-    else if (e.kind === 'speedPct') speedMult *= 1 + e.pct / 100;
-    else if (e.kind === 'cost') cost += e.delta;
-    else mergeTrait(traits, e.trait);
-  });
   // Skill tree.
   let rangeMult = 1;
   let rateMult = 1;
@@ -117,6 +118,8 @@ export function blueprint(batId: string, owned: OwnedBat | undefined, upgradedCa
     else if (e.kind === 'bats') extraBats += e.n;
     else if (e.kind === 'refillPct') refillMult /= 1 + e.pct / 100;
     else if (e.kind === 'batch') extraBatch += e.n;
+    else if (e.kind === 'speedPct') speedMult *= 1 + e.pct / 100;
+    else if (e.kind === 'cost') cost += e.delta;
     else if (e.kind === 'spread') {
       for (const t of e.tiles) if (!pattern.some(([c, r]) => c === t[0] && r === t[1])) pattern.push([t[0], t[1]]);
     } else strongerTrait(traits, e.trait);
