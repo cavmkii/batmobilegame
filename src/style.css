@@ -20,7 +20,8 @@ body {
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
 }
-#app { max-width: 520px; margin: 0 auto; padding: 0 12px calc(24px + env(safe-area-inset-bottom)); }
+#app { max-width: 520px; margin: 0 auto; padding: env(safe-area-inset-top) 12px calc(24px + env(safe-area-inset-bottom)); }
+header.bar { top: env(safe-area-inset-top); }
 
 h1, h2 { margin: 0; }
 h2 { font-size: 15px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); margin: 18px 0 8px; }
@@ -279,3 +280,18 @@ header.bar .currency { font-size: 13px; gap: 8px; }
 .entry.unknown img { filter: brightness(0) opacity(.6); }
 
 .mod-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 4px 0; }
+
+/* Tutorial */
+.coach { background: linear-gradient(180deg, #3a2e20, var(--panel)); border: 1px solid var(--accent); border-radius: var(--radius); padding: 10px 12px; font-size: 13.5px; line-height: 1.4; display: grid; gap: 6px; }
+.coach-step { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); font-weight: 700; }
+.coach-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.coach-target { outline: 3px solid var(--accent); outline-offset: 2px; animation: coachPulse 1.2s ease-in-out infinite; border-radius: 10px; }
+@keyframes coachPulse { 50% { outline-color: rgba(255,194,61,.25); } }
+
+/* In a level, the tutorial floats over the empty sky between the wave preview and the roosts. */
+.defense-screen .canvas-wrap { position: relative; }
+.defense-screen .coach { position: absolute; left: 8px; right: 8px; top: 17%; z-index: 4; font-size: 13px; box-shadow: 0 8px 24px rgba(0,0,0,.6); background: linear-gradient(180deg, #3a2e20f2, #1f1830f2); }
+
+/* Installed app: no rubber-band scrolling or text selection on long-press. */
+@media (display-mode: standalone) { body { -webkit-user-select: none; user-select: none; } }
+.backup textarea { width: 100%; min-height: 110px; font: 11px monospace; background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }

@@ -23,6 +23,10 @@ export interface Highlight {
   pattern: Set<number>;
   /** Press-and-hold preview: tiles that would get +1. */
   peek: Set<number>;
+  /** Tap-to-preview placement: a ghost roost on this tile until the second tap confirms. */
+  preview: { slot: number; batId: string; merge: boolean } | null;
+  /** For a new roost: the tiles its pattern would reach when it merges later. */
+  footprint: Set<number>;
   batId: string | null;
 }
 
@@ -110,6 +114,30 @@ export class FieldRenderer {
         g.fillText('+1', sx + 1, sy + 6);
         g.fillStyle = '#ffe14a';
         g.fillText('+1', sx, sy + 5);
+      }
+      if (hl.footprint.has(s.idx)) {
+        g.strokeStyle = 'rgba(255,225,74,0.7)';
+        g.lineWidth = 1.5;
+        g.setLineDash([3, 3]);
+        g.strokeRect(x0 + 3, y0 + 3, w - 6, h - 6);
+        g.setLineDash([]);
+      }
+      if (hl.preview?.slot === s.idx) {
+        if (!hl.preview.merge) {
+          const ghost = batSprite(hl.preview.batId, 0, 0.8, { folded: true });
+          g.globalAlpha = 0.55 + Math.sin(d.clock * 6) * 0.15;
+          g.drawImage(ghost, sx - ghost.width / 2, sy - ghost.height / 2);
+          g.globalAlpha = 1;
+        }
+        g.strokeStyle = '#ffffff';
+        g.lineWidth = 3;
+        g.strokeRect(x0 + 1, y0 + 1, w - 2, h - 2);
+        g.fillStyle = 'rgba(0,0,0,0.65)';
+        g.fillRect(x0 + 2, y0 + h - 13, w - 4, 11);
+        g.fillStyle = '#fff';
+        g.font = 'bold 8px monospace';
+        g.textAlign = 'center';
+        g.fillText('TAP AGAIN', sx, y0 + h - 5);
       }
       if (hl.pattern.has(s.idx)) {
         g.fillStyle = 'rgba(120,200,255,0.18)';

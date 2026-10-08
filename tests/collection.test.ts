@@ -102,3 +102,34 @@ describe('run setup: maps and modifiers', () => {
     expect(res.xp).toBe(1500); // +20% +30%
   });
 });
+
+describe('save versioning', () => {
+  it('discards saves from an older version, so players start fresh with the tutorial', async () => {
+    const { loadProfile, SAVE_VERSION } = await import('../src/game/profile');
+    const store: Record<string, string> = {};
+    (globalThis as unknown as { localStorage: Storage }).localStorage = {
+      getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; },
+      removeItem: (k: string) => { delete store[k]; }, clear: () => {}, key: () => null, length: 0,
+    };
+    store['batmobile.save'] = JSON.stringify({ version: 1, roster: { ghost_bat: {} }, xp: 99999, starterChosen: true });
+    const p = loadProfile();
+    expect(p.version).toBe(SAVE_VERSION);
+    expect(p.xp).toBe(0);
+    expect(p.starterChosen).toBe(false);
+    expect(p.tutorialDone).toBe(false);
+  });
+});
+
+describe('save backup', () => {
+  it('round-trips a save through a backup code and rejects junk', async () => {
+    const { exportSave, importSave } = await import('../src/game/profile');
+    const p = newProfile();
+    chooseStarter(p, 'spectral_bat');
+    p.xp = 1234;
+    p.claimed = ['species_10'];
+    const back = importSave(exportSave(p));
+    expect(back).toEqual(p);
+    expect(importSave('not a save')).toBeNull();
+    expect(importSave(btoa(JSON.stringify({ version: 1 })))).toBeNull();
+  });
+});

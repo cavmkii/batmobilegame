@@ -89,6 +89,7 @@ registerScreen('map', (app) => {
   return h('div.screen',
     header(`${BIOME_BY_ID[r.biome ?? '']?.icon ?? ''} ${BIOME_BY_ID[r.biome ?? '']?.name ?? 'Night Flight'}`, () => app.go({ name: 'home' }), h('button.ghost', { onclick: () => app.go({ name: 'deck' }) }, `Deck ${r.deck.length}`)),
     runHud(app),
+    !app.profile.tutorialDone ? h('div.coach', h('div.coach-step', 'The run map'), h('div', 'A run is a path up this map to the boss at the top. Each ⚔ is a level of several nights. Tap a glowing node to start.')) : null,
     r.modifiers?.length ? h('div.mod-chips', ...r.modifiers.map((id) => h('span.tag', { title: MODIFIER_BY_ID[id]?.desc }, `${MODIFIER_BY_ID[id]?.icon} ${MODIFIER_BY_ID[id]?.name}`)), h('span.small.muted', ` rewards +${rewardBonusPct(r.modifiers)}%`)) : null,
     h('div.map-cmd', batImg(cmd.id, 1), h('span.small', cmd.name), clanPips(cmd.clans)),
     h('div.map', { style: `height:${H}px` }, svg, ...nodes),

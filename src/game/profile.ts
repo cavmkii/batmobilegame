@@ -4,8 +4,16 @@ import { BALANCE } from '../data/balance';
 import { newOwnedBat, type OwnedBat } from './progression';
 import type { RunState } from './run';
 
+/**
+ * Bump to start everyone fresh: older saves are discarded on load.
+ * v2: the Roost Defense / field guide era, and the first-play tutorial.
+ */
+export const SAVE_VERSION = 2;
+
 export interface Profile {
-  version: 1;
+  version: typeof SAVE_VERSION;
+  /** First-level tutorial finished (or skipped). */
+  tutorialDone: boolean;
   roster: Record<string, OwnedBat>;
   xp: number;
   glow: number;
@@ -30,7 +38,8 @@ const KEY = 'batmobile.save';
 
 export function newProfile(): Profile {
   return {
-    version: 1,
+    version: SAVE_VERSION,
+    tutorialDone: false,
     roster: { fledgling: newOwnedBat() },
     xp: 0,
     glow: BALANCE.gacha.ten,
@@ -56,7 +65,7 @@ export function loadProfile(): Profile {
     const raw = localStorage.getItem(KEY);
     if (!raw) return newProfile();
     const p = JSON.parse(raw) as Profile;
-    if (p.version !== 1) return newProfile();
+    if (p.version !== SAVE_VERSION) return newProfile();
     // Drop bats removed from the data set since the save was written.
     for (const id of Object.keys(p.roster)) if (!BAT_BY_ID[id]) delete p.roster[id];
     p.pendingDupes = (p.pendingDupes ?? []).filter((id) => BAT_BY_ID[id]);
@@ -85,4 +94,20 @@ export function resetProfile(): Profile {
     /* ignore */
   }
   return newProfile();
+}
+
+/** A copyable backup code for the save (base64 JSON). */
+export function exportSave(p: Profile): string {
+  return btoa(unescape(encodeURIComponent(JSON.stringify(p))));
+}
+
+/** Restore from a backup code. Returns null if the code isn't a valid save for this version. */
+export function importSave(code: string): Profile | null {
+  try {
+    const p = JSON.parse(decodeURIComponent(escape(atob(code.trim())))) as Profile;
+    if (!p || p.version !== SAVE_VERSION || typeof p.roster !== 'object') return null;
+    return p;
+  } catch {
+    return null;
+  }
 }

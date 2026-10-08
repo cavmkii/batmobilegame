@@ -233,6 +233,19 @@ region, a fact, and a conservation note where the status is notable and well est
     a night.
   - Unfound entries are blacked out as ???.
 
+## 4d. First play and placement
+
+- **Placement takes two taps.** Tap a bat card (or a roost to merge), then tap a tile. That
+  shows a preview first: a ghost roost, dashed outlines on the tiles its pattern would +1
+  when it later merges, or for a merge, "+1" on the target and every roost its pattern
+  bumps. Tap the same tile again to confirm, or another tile to move the preview.
+- **Tutorial:** a 9-step guided first level covering the wave preview, placing the
+  commander, preview and confirm, the pool, guano, ending the day, night, and merging.
+  It's skippable, and can be replayed from the home screen. The Play screen and run map
+  show first-run hints. The tutorial level starts with +4 guano so both the commander and
+  a pool bat are affordable.
+- **Save version 2** discards all older saves, so everyone starts fresh with the tutorial.
+
 ## 5. Run structure (unchanged from v0.1; battle nodes are now defense levels)
 
 - One act (designed for three later): 8 rows of nodes, branching paths.

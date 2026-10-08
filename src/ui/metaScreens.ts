@@ -3,7 +3,7 @@ import { BATS, BAT_BY_ID, STARTER_COMMANDERS } from '../data/bats';
 import { CLANS, CLAN_ORDER, RARITY_COLOR } from '../data/clans';
 import { identityOf, legalCoreBats, validateCore } from '../game/deck';
 import { canTakePlus, pull, resolveDupe, type PullResult } from '../game/gacha';
-import { chooseStarter, resetProfile } from '../game/profile';
+import { chooseStarter, exportSave, importSave, resetProfile } from '../game/profile';
 import {
   blueprint, canEvolve, canLevelUp, canTalent, describeTrait, displayName, dupeXp, evolveCost, levelCap, levelUpCost, talentCost,
 } from '../game/progression';
@@ -16,7 +16,7 @@ import { BIOMES, MODIFIERS, rewardBonusPct } from '../data/setup';
 import { enemyImageUrl } from '../render/pixel';
 import { registerScreen, type App } from './app';
 import { batImg, clanPips, currencyBar, fmt, header, patternGrid } from './components';
-import { h, toast } from './dom';
+import { h, modal, toast } from './dom';
 
 const wallet = (app: App) => currencyBar([['✨', app.profile.xp], ['🪲', app.profile.glow]]);
 
@@ -64,6 +64,10 @@ registerScreen('home', (app) => {
         p.pendingDupes.length ? h('span.badge', p.pendingDupes.length) : null),
     ),
     h('div.stats.muted', `Runs ${p.stats.runs} · Clears ${p.stats.clears} · Best depth ${p.stats.bestRow}/${BALANCE.run.rows} · Pulls ${p.stats.pulls}`),
+    h('div.center',
+      p.tutorialDone ? h('button.ghost.small', { onclick: () => { p.tutorialDone = false; app.save(); toast('The tutorial will play in your next level.'); } }, 'Replay tutorial') : null,
+      h('button.ghost.small', { onclick: () => backupDialog(app) }, 'Back up / restore save'),
+    ),
     h('button.ghost.small', {
       onclick: () => {
         if (confirm('Erase all progress?')) {
@@ -74,6 +78,38 @@ registerScreen('home', (app) => {
     }, 'Reset save'),
   );
 });
+
+function backupDialog(app: App) {
+  const code = exportSave(app.profile);
+  const area = h('textarea', { readonly: true }, code) as HTMLTextAreaElement;
+  const input = h('textarea', { placeholder: 'Paste a backup code here to restore it' }) as HTMLTextAreaElement;
+  let close = () => {};
+  close = modal(h('div.backup',
+    h('h2', 'Back up your save'),
+    h('p.small.muted', 'iPhone can clear data for home-screen apps that go unused for a while. Copy this code somewhere safe (e.g. Notes).'),
+    area,
+    h('button.primary', {
+      onclick: async () => {
+        try { await navigator.clipboard.writeText(code); toast('Backup code copied'); } catch { area.select(); toast('Select and copy the code'); }
+      },
+    }, 'Copy code'),
+    h('h2', 'Restore'),
+    input,
+    h('button', {
+      onclick: () => {
+        const p = importSave(input.value);
+        if (!p) return toast('That code is not a valid save.');
+        if (!confirm('Replace your current progress with this backup?')) return;
+        app.profile = p;
+        app.save();
+        close();
+        app.go({ name: 'home' });
+        toast('Save restored');
+      },
+    }, 'Restore from code'),
+    h('button.ghost', { onclick: () => close() }, 'Close'),
+  ));
+}
 
 // ---------------- Roster ----------------
 
@@ -319,6 +355,7 @@ registerScreen('prep', (app) => {
     const err = validateCore(p, cmd, core);
     const fledglings = Math.max(0, BALANCE.run.startDeckSize - core.length);
     body.replaceChildren(
+      !p.tutorialDone ? h('div.coach', h('div.coach-step', 'First run'), h('div', 'Your commander and starting deck are already picked. Choose any map, leave modifiers off for now, and tap Begin run at the bottom.')) : '',
       h('h2', 'Commander'),
       h('div.commander-row', ...commanders.map((id) => h(`button.cmd-pick${id === cmd ? '.selected' : ''}`, {
         onclick: () => { cmd = id; draw(); },
