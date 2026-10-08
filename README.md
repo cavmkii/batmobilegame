@@ -38,7 +38,7 @@ To read the balance report:
 ## Layout
 
 ```
-src/data/     all content and tuning numbers (bats, spells, enemies, levels, terrain, relics, sprites, balance)
+src/data/     all content and tuning numbers (bats, spells, enemies, levels, terrain, charms, saga, sprites, balance)
 src/game/     pure logic, no DOM: day/night defense sim, deck rules, gacha, progression, map gen, run state
 src/render/   pixel sprite rendering and the defense field canvas
 src/ui/       DOM screens

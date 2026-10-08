@@ -21,7 +21,7 @@ export function skillTree(batId: string): [SkillNode, SkillNode][] | null {
   const tree = SKILL_TREES[batId];
   const def = BAT_BY_ID[batId];
   if (!tree || !def) return null;
-  return [...tree, [def.talents[0], def.talents[1]].map((t) => ({ name: t.name, effect: t.effect })) as [SkillNode, SkillNode]];
+  return [...tree, [def.talents[0], def.talents[1]].map((t) => ({ name: `★ ${t.name}`, effect: t.effect })) as [SkillNode, SkillNode]];
 }
 
 /** Level forks unlock by roster level; the last one by evolution. */
