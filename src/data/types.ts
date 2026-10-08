@@ -142,14 +142,15 @@ export type PassiveEffect =
 
 export type TerrainId = 'pond' | 'fig' | 'cactus' | 'lamp' | 'pen';
 
-export type CardMod = 'foil' | 'wild' | 'echo' | 'glass';
+export type CardMod = 'sharp' | 'foil' | 'wild' | 'echo' | 'glass';
 
 /** A card in a run deck. */
 export interface Card {
   uid: string;
   kind: 'bat' | 'spell';
   id: string;
-  upgraded: boolean;
-  /** Enhancement (bat cards only). */
+  /** Legacy: card upgrades became the Sharp enhancement (migrated on load). */
+  upgraded?: boolean;
+  /** Enhancement. Spells can only be Sharp. */
   mod?: CardMod;
 }

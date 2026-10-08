@@ -220,7 +220,7 @@ registerScreen('reward', (app) => {
     r.draft?.length ? h('section',
       h('h2', 'Choose a card'),
       h('p.muted.small', 'Copies of bats you already run make merges more likely; a new species adds a pattern and a clan.'),
-      h('div.card-grid', ...r.draft.map((o) => cardFace({ ...o, upgraded: false }, app.profile.roster[o.id], {
+      h('div.card-grid', ...r.draft.map((o) => cardFace({ ...o }, app.profile.roster[o.id], {
         onclick: () => takeOffer(app, o, () => { r.draft = null; app.save(); app.refresh(); }),
         footer: copiesTag(r.deck, o),
       }))),
@@ -251,7 +251,7 @@ registerScreen('shop', (app) => {
     header('Fig Market'),
     runHud(app),
     h('p.muted.small', 'A fruit bat colony trades in figs. Prices are in 🫐.'),
-    h('div.card-grid', ...s.cards.map((o, i) => cardFace({ ...o, upgraded: false }, app.profile.roster[o.id], {
+    h('div.card-grid', ...s.cards.map((o, i) => cardFace({ ...o }, app.profile.roster[o.id], {
       footer: h('div', copiesTag(r.deck, o), h('button.primary', {
         disabled: r.figs < o.price!,
         onclick: () => {
@@ -271,7 +271,7 @@ registerScreen('shop', (app) => {
       const e = ENHANCE_BY_ID[mod];
       return h('div.charm-card', h('div.cc-icon', e.icon), h('div', h('b', e.name), h('div.small', e.desc)), h('button.primary', {
         disabled: r.figs < e.price,
-        onclick: () => pickFromDeck(app, `Make which card ${e.name}?`, (c) => c.kind === 'bat', (c) => {
+        onclick: () => pickFromDeck(app, `Make which card ${e.name}?`, (c) => c.kind === 'bat' || mod === 'sharp', (c) => {
           if (r.figs < e.price || !enhanceCard(r, c.uid, mod)) return;
           r.figs -= e.price;
           s.enhance.splice(i, 1);
@@ -316,12 +316,12 @@ registerScreen('rest', (app) => {
     h('div.actions.vertical',
       h('button.big.primary', { onclick: () => { heal(r, amount); done(); } }, `Rest: heal ${fmt(amount)} cave HP`),
       h('button.big', {
-        onclick: () => pickFromDeck(app, 'Upgrade which card?', (c) => !c.upgraded, (c) => {
+        onclick: () => pickFromDeck(app, 'Make which card Sharp? (replaces another enhancement)', (c) => c.mod !== 'sharp', (c) => {
           upgradeCard(r, c.uid);
-          toast(`${cardName(c)} upgraded`);
+          toast(`${cardName(c)} is Sharp`);
           done();
         }),
-      }, 'Train: upgrade a card'),
+      }, 'Train: make a card Sharp (+30%)'),
     ),
   );
 });

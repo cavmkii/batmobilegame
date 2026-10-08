@@ -84,6 +84,11 @@ function migrate(p: Profile) {
     delete legacyRun.relics;
     delete legacyRun.rewardRelic;
     p.run.charms = p.run.charms.filter((id) => CHARM_BY_ID[id]);
+    // Card upgrades became the Sharp enhancement.
+    for (const c of p.run.deck) {
+      if (c.upgraded && !c.mod) c.mod = 'sharp';
+      delete c.upgraded;
+    }
     if (p.run.shop) delete (p.run.shop as { relic?: unknown }).relic;
     if (p.run.shop) Object.assign(p.run.shop, { charms: p.run.shop.charms ?? [], enhance: p.run.shop.enhance ?? [], chart: p.run.shop.chart ?? null });
   }

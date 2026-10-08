@@ -1,6 +1,6 @@
 import { BAT_BY_ID } from '../data/bats';
 import { CLANS, RARITY_COLOR } from '../data/clans';
-import { ENHANCE_BY_ID } from '../data/enhance';
+import { ENHANCE_BY_ID, isSharp } from '../data/enhance';
 import { SPELL_BY_ID } from '../data/spells';
 import type { Card, ClanId, Rarity } from '../data/types';
 import { attackLabel, blueprint, describeTrait, displayName, type OwnedBat } from '../game/progression';
@@ -26,13 +26,13 @@ export function rarityOf(card: Pick<Card, 'kind' | 'id'>): Rarity {
  * A full card face for deck lists, drafts and the shop.
  * `owned` is the roster entry used for stats (undefined = unowned → level 1).
  */
-export function cardFace(card: Pick<Card, 'kind' | 'id' | 'upgraded' | 'mod'>, owned?: OwnedBat, opts: { onclick?: () => void; footer?: Node | string; selected?: boolean; compact?: boolean } = {}) {
+export function cardFace(card: Pick<Card, 'kind' | 'id' | 'mod'> & { upgraded?: boolean }, owned?: OwnedBat, opts: { onclick?: () => void; footer?: Node | string; selected?: boolean; compact?: boolean } = {}) {
   const rarity = rarityOf(card);
-  const cls = `card-face r-${rarity}${opts.selected ? ' selected' : ''}${opts.compact ? ' compact' : ''}${card.upgraded ? ' upgraded' : ''}`;
+  const cls = `card-face r-${rarity}${opts.selected ? ' selected' : ''}${opts.compact ? ' compact' : ''}${isSharp(card) ? ' upgraded' : ''}`;
   let art: Node, name: string, cost: number, clans: ClanId[], lines: string[], sub: string;
   if (card.kind === 'bat') {
     const def = BAT_BY_ID[card.id];
-    const bp = blueprint(card.id, owned, card.upgraded);
+    const bp = blueprint(card.id, owned, isSharp(card));
     art = batImg(card.id, 2);
     name = displayName(def, owned);
     cost = bp.cost;
@@ -52,12 +52,12 @@ export function cardFace(card: Pick<Card, 'kind' | 'id' | 'upgraded' | 'mod'>, o
     cost = s.cost;
     clans = s.clans;
     sub = 'Spell';
-    lines = [s.desc + (card.upgraded ? ' (Upgraded: +40% power)' : '')];
+    lines = [s.desc + (isSharp(card) ? ' (Sharp: +40% power)' : '')];
   }
   return h(`div.${cls.split(' ').join('.')}`, { onclick: opts.onclick, style: `--rarity:${RARITY_COLOR[rarity]}` },
     h('div.cf-top', h('span.cost', cost), clanPips(clans)),
     h('div.cf-art', art),
-    h('div.cf-name', name + (card.upgraded ? '+' : '')),
+    h('div.cf-name', name),
     card.mod ? h('div.cf-mod', `${ENHANCE_BY_ID[card.mod].icon} ${ENHANCE_BY_ID[card.mod].name}`) : null,
     h('div.cf-sub', sub),
     !opts.compact && h('div.cf-lines', ...lines.map((l) => h('div', l))),

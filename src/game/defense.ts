@@ -6,6 +6,7 @@ import { MATRIARCH_BY_ID, matriarchGuano } from '../data/matriarchs';
 import type { BossRuleId } from '../data/bossRules';
 import { ENCOUNTERS, ENEMY_BY_ID, type Encounter } from '../data/enemies';
 import { CHARM_BY_ID } from '../data/charms';
+import { isSharp } from '../data/enhance';
 import { SPELL_BY_ID } from '../data/spells';
 import { BIOMES, BIOME_BY_ID, MODIFIER_BY_ID } from '../data/setup';
 import { TERRAIN } from '../data/terrain';
@@ -493,7 +494,8 @@ export class Defense {
     this.guano -= this.cardCost(card);
     // Placed cards cycle back through the deck, so the same bat can be drawn again and stacked.
     this.discard.push(card);
-    if (card.mod === 'echo') this.discard.push({ uid: `echo-${card.uid}-${this.clock}`, kind: 'bat', id: 'fledgling', upgraded: false });
+    // Echo: a plain copy of the card joins the discard for the rest of the level.
+    if (card.mod === 'echo') this.discard.push({ uid: `echo-${card.uid}-${this.clock}`, kind: 'bat', id: card.id });
     if (slot.roost) {
       if (card.mod === 'glass') slot.roost.glass.push(card.uid);
       this.mergeUp(slot);
@@ -535,7 +537,7 @@ export class Defense {
     if (!this.canCast(i)) return false;
     const card = this.spells.splice(i, 1)[0];
     this.guano -= this.cardCost(card);
-    this.castSpell(SPELL_BY_ID[card.id].effect, card.upgraded);
+    this.castSpell(SPELL_BY_ID[card.id].effect, isSharp(card));
     this.discard.push(card);
     return true;
   }
@@ -903,7 +905,7 @@ export class Defense {
   }
 
   private batBlueprint(card: Card): UnitBlueprint {
-    return blueprint(card.id, this.cfg.roster[card.id], card.upgraded);
+    return blueprint(card.id, this.cfg.roster[card.id], isSharp(card));
   }
 
   private neighbours(s: Slot): Slot[] {

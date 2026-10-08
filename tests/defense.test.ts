@@ -510,7 +510,7 @@ describe('charms, enhancements, boss rules, interest', () => {
 
 /** Balance report. Run: npx vitest run tests/defense.test.ts -t balance --reporter=verbose */
 describe('balance smoke', () => {
-  const drafted = () => [newCard('bat', 'egyptian_fruit'), newCard('bat', 'egyptian_fruit', true), newCard('bat', 'straw_fruit'),
+  const drafted = () => [newCard('bat', 'egyptian_fruit'), newCard('bat', 'egyptian_fruit', 'sharp'), newCard('bat', 'straw_fruit'),
     newCard('bat', 'pallas_tongue'), newCard('spell', 'ripe_harvest'), newCard('spell', 'screech')];
   const decks: Record<string, { mat: string; flock: string[]; extra: Card[]; level: number }> = {
     'ghost starter L1': { mat: 'ghost_bat', flock: ['little_brown', 'common_vampire', 'egyptian_fruit'], extra: [], level: 1 },
@@ -530,7 +530,7 @@ describe('balance smoke', () => {
         let lost = 0;
         const N = 8;
         for (let s = 0; s < N; s++) {
-          const deck = [...buildStartingDeck(d.flock), ...d.extra.map((c) => newCard(c.kind, c.id, c.upgraded))];
+          const deck = [...buildStartingDeck(d.flock), ...d.extra.map((c) => newCard(c.kind, c.id, c.mod))];
           const def = new Defense(cfg({
             encounterId: enc.id, row, deck, matriarchId: d.mat, seed: s * 7 + 1,
             roster: roster([d.mat, 'fledgling', ...d.flock, ...d.extra.filter((c) => c.kind === 'bat').map((c) => c.id)], d.level),

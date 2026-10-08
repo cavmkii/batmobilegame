@@ -4,7 +4,7 @@ import { CLANS, RARITY_COLOR } from '../data/clans';
 import { MODIFIER_BY_ID } from '../data/setup';
 import { BOSS_RULE_BY_ID } from '../data/bossRules';
 import { CHARM_BY_ID, CHARM_SLOTS } from '../data/charms';
-import { ENHANCE_BY_ID } from '../data/enhance';
+import { ENHANCE_BY_ID, isSharp } from '../data/enhance';
 import { FORMATIONS, type FormationId } from '../data/formations';
 import { MATRIARCH_BY_ID } from '../data/matriarchs';
 import { ENEMY_BY_ID } from '../data/enemies';
@@ -233,7 +233,7 @@ registerScreen('battle', (app) => {
     return { slots, pattern, batId, peek: peekTiles(), preview: null, footprint: new Set() };
   };
 
-  const bpOf = (c: Card) => blueprint(c.id, app.profile.roster[c.id], c.upgraded);
+  const bpOf = (c: Card) => blueprint(c.id, app.profile.roster[c.id], isSharp(c));
   const describeBat = (batId: string, upgraded: boolean): string => {
     const bp = blueprint(batId, app.profile.roster[batId], upgraded);
     const traits = [attackLabel(bp.traits, bp.stats.range), ...bp.traits.filter((t) => t.kind !== 'multiHit' && t.kind !== 'aoe').map(describeTrait)].join(', ');
@@ -343,7 +343,7 @@ registerScreen('battle', (app) => {
     h('span.cost', cost),
     card.mod ? h('span.mod-badge', { title: ENHANCE_BY_ID[card.mod].name }, ENHANCE_BY_ID[card.mod].icon) : '',
     kind === 'bat' ? batImg(id, 2) : h('div.spell-icon', SPELL_BY_ID[id].icon),
-    h('div.hc-name', name.replace(/ Bat$/, '') + (card.upgraded ? '+' : '')),
+    h('div.hc-name', name.replace(/ Bat$/, '')),
     kind === 'bat' ? h('div.hc-atk', clanPips(clans), ' ', ATTACK_LABEL[attackStyle(bpOf(card).traits, bpOf(card).stats.range)].icon) : clanPips(clans),
     kind === 'bat' ? patternGrid(id, 'xs', d.patternOf(id)) : '',
     o.tag ? h('div.tax', o.tag) : '',
@@ -401,7 +401,7 @@ registerScreen('battle', (app) => {
       if (sel.kind === 'pool') {
         const c = d.pool[sel.i];
         if (c) text = c.kind === 'bat'
-          ? describeBat(c.id, c.upgraded)
+          ? describeBat(c.id, isSharp(c))
           : `${SPELL_BY_ID[c.id].name}: ${SPELL_BY_ID[c.id].desc} Tap again to take it (free); casting costs ${d.cardCost(c)} guano.`;
       } else if (sel.kind === 'spell') {
         const c = d.spells[sel.i];

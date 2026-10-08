@@ -4,7 +4,7 @@ import { BAT_BY_ID } from '../data/bats';
 import { SPELL_BY_ID } from '../data/spells';
 import type { Card, CardMod, ClanId, Rarity } from '../data/types';
 import { CHARMS, CHARM_BY_ID, CHARM_PRICE, CHARM_SLOTS, charmSellValue } from '../data/charms';
-import { ENHANCEMENTS, ENHANCE_BY_ID } from '../data/enhance';
+import { ENHANCEMENTS, ENHANCE_BY_ID, isSharp } from '../data/enhance';
 import { FORMATIONS, type FormationId } from '../data/formations';
 import { GOALS, SAGA_ROWS, sagaMaxDepth, sagaNode, type GoalId } from '../data/saga';
 import { buildStartingDeck, draftPool, newCard, validateSetup } from './deck';
@@ -244,7 +244,7 @@ export function studyChart(run: RunState, id: FormationId) {
 /** Enhance a bat card. Replaces any previous enhancement. */
 export function enhanceCard(run: RunState, uid: string, mod: CardMod): boolean {
   const c = run.deck.find((x) => x.uid === uid);
-  if (!c || c.kind !== 'bat' || !ENHANCE_BY_ID[mod]) return false;
+  if (!c || !ENHANCE_BY_ID[mod] || (c.kind === 'spell' && mod !== 'sharp')) return false;
   c.mod = mod;
   return true;
 }
@@ -317,10 +317,11 @@ export function removeCard(run: RunState, uid: string): boolean {
   return true;
 }
 
+/** Rest site / events: make a card Sharp (replaces any other enhancement). */
 export function upgradeCard(run: RunState, uid: string): boolean {
   const c = run.deck.find((x) => x.uid === uid);
-  if (!c || c.upgraded) return false;
-  c.upgraded = true;
+  if (!c || c.mod === 'sharp') return false;
+  c.mod = 'sharp';
   return true;
 }
 
@@ -396,10 +397,10 @@ export const EVENTS: RunEvent[] = [
         label: 'Practise',
         detail: 'Upgrade a random card',
         apply: (r, rng) => {
-          const c = r.deck.filter((x) => !x.upgraded);
+          const c = r.deck.filter((x) => !x.mod);
           if (!c.length) return 'Everyone is already sharp.';
           const pick = rng.pick(c);
-          pick.upgraded = true;
+          pick.mod = 'sharp';
           return `${cardName(pick)} improved.`;
         },
       },
@@ -407,8 +408,8 @@ export const EVENTS: RunEvent[] = [
         label: 'Practise all night',
         detail: 'Upgrade 2 random cards, lose 10% cave HP',
         apply: (r, rng) => {
-          const c = rng.shuffle(r.deck.filter((x) => !x.upgraded)).slice(0, 2);
-          c.forEach((x) => (x.upgraded = true));
+          const c = rng.shuffle(r.deck.filter((x) => !x.mod)).slice(0, 2);
+          c.forEach((x) => (x.mod = 'sharp'));
           heal(r, -r.caveMax * 0.1);
           r.caveHp = Math.max(1, r.caveHp);
           return c.length ? `${c.map(cardName).join(' and ')} improved.` : 'Nothing left to learn.';
@@ -447,9 +448,9 @@ export function chooseEventOption(run: RunState, index: number): string {
   return msg;
 }
 
-export function cardName(c: Pick<Card, 'kind' | 'id' | 'upgraded'>): string {
+export function cardName(c: Pick<Card, 'kind' | 'id' | 'upgraded' | 'mod'>): string {
   const base = c.kind === 'bat' ? BAT_BY_ID[c.id].name : SPELL_BY_ID[c.id].name;
-  return c.upgraded ? `${base}+` : base;
+  return isSharp(c) ? `${base}+` : base;
 }
 
 /** Bank the run's rewards into the profile and close the run. */
