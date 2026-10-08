@@ -338,11 +338,17 @@ describe('matriarchs', () => {
     expect(plain.canMerge(10, 5)).toBe(false);
   });
 
-  it('Long Range shows three cards and Feeding Roost pays more for kills', () => {
+  it('Long Range shows three cards; Feeding Roost levels the best hunters at dawn', () => {
     const n = new Defense(cfg({ matriarchId: 'greater_noctule', roster: roster(['greater_noctule', 'little_brown']), deck: two('little_brown') }));
     expect(n.pool.length).toBe(BALANCE.economy.poolSize + 1);
     const g = new Defense(cfg());
-    expect(g.rule.killsPerGuano).toBe(2);
+    expect(g.rule.feedingRoost).toBe(true);
+    put(g, at(0, 0), 'little_brown');
+    put(g, at(4, 0), 'little_brown');
+    g.cave.hp = g.cave.max = 1e9;
+    g.endDay();
+    for (let k = 0; k < 60 * 120 && g.phase === 'night'; k++) g.step(1 / 60);
+    expect(g.slots[at(0, 0)].roost!.level + g.slots[at(4, 0)].roost!.level).toBe(3);
   });
 
   it('a levelled matriarch adds starting guano', () => {

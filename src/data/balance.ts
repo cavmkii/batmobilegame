@@ -7,10 +7,10 @@ export const BALANCE = {
   units: { rangePerTile: 100, minMelee: 0.35, batSpeed: 2.5 / 100, enemySpeed: 1.6 / 100 },
   /**
    * Guano: the in-level currency for placing bats, refreshing the pool and casting spells.
-   * Dawn income = perDawn + 1 per batsPerGuano bats housed in standing roosts + 1 per killsPerGuano kills.
+   * Dawn income = perDawn + 1 per batsPerGuano bats housed in standing roosts (+ Clusters, interest, charms).
    * Roosts are the economy: early on it's a grind; investing in bats raises income, spells and rerolls don't.
    */
-  economy: { startGuano: 6, perDawn: 2, batsPerGuano: 2, killsPerGuano: 4, refreshCost: 2, poolSize: 2, spellHandMax: 3 },
+  economy: { startGuano: 6, perDawn: 2, batsPerGuano: 2, refreshCost: 2, poolSize: 2, spellHandMax: 3 },
   /** Unspent guano earns interest at dawn: +1 per `per`, up to `cap` (Balatro-style). */
   interest: { per: 5, cap: 3 },
   /**

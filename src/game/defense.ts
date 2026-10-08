@@ -196,7 +196,9 @@ export class Defense {
   /** Last dawn's interest, for the UI. */
   lastInterest = 0;
   /** The matriarch's rule, unpacked. */
-  readonly rule = { mergeRefund: 0, killsPerGuano: E.killsPerGuano, mergeReach: 0, poolExtra: 0 };
+  readonly rule = { mergeRefund: 0, feedingRoost: false, mergeReach: 0, poolExtra: 0 };
+  /** Kills tonight by home slot (Feeding Roost). */
+  private killsBy = new Map<number, number>();
 
   constructor(private cfg: DefenseConfig) {
     const enc = ENCOUNTERS.find((e) => e.id === cfg.encounterId);
@@ -224,7 +226,7 @@ export class Defense {
     }
     const m = MATRIARCH_BY_ID[cfg.matriarchId]?.effect;
     if (m?.kind === 'mergeRefund') this.rule.mergeRefund = m.guano;
-    else if (m?.kind === 'killGuano') this.rule.killsPerGuano = m.perKills;
+    else if (m?.kind === 'feedingRoost') this.rule.feedingRoost = true;
     else if (m?.kind === 'mergeReach') this.rule.mergeReach = m.levels;
     else if (m?.kind === 'poolSize') this.rule.poolExtra = m.extra;
 
@@ -547,6 +549,7 @@ export class Defense {
     this.phase = 'night';
     this.time = 0;
     this.kills = 0;
+    this.killsBy.clear();
     this.buffs = { atkPct: 0, lifesteal: 0, atkUntil: 0, hastePct: 0, hasteUntil: 0, slowPct: 0, slowUntil: 0 };
     // Nobody is out at dusk: every roost starts its cooldown and releases bats as it fills.
     this.clearTimer = 0;
@@ -826,7 +829,7 @@ export class Defense {
     return n;
   }
 
-  /** What tomorrow's dawn would pay if no roost were wrecked tonight (kills not included). */
+  /** What tomorrow's dawn would pay if no roost were wrecked tonight (Scavenger kills not included). */
   projectedIncome(): number {
     return Math.max(0, E.perDawn + this.mods.guanoPerDawn) + Math.floor(this.housedBats() / E.batsPerGuano) + this.passive.guanoPerDawn
       + this.clusterGuano(this.formations());
@@ -861,6 +864,15 @@ export class Defense {
         this.effects.push({ kind: 'heal', x: n.x, y: n.y, r: 0.4, t: this.clock });
       }
     }
+    // Feeding Roost: the night's best hunters level up.
+    if (this.rule.feedingRoost && this.killsBy.size) {
+      const [idx] = [...this.killsBy].reduce((a, b) => (b[1] > a[1] ? b : a));
+      const slot = this.slots[idx];
+      if (slot.roost && !slot.roost.nursery) {
+        this.levelUp(slot, 1);
+        this.floats.push({ x: slot.x, y: slot.y - 0.3, text: 'Feeding Roost!', color: '#ff8aa0', t: this.clock });
+      }
+    }
     if (this.day >= this.nights) {
       this.phase = 'won';
       return;
@@ -868,7 +880,7 @@ export class Defense {
     this.lastIncomeParts = {
       base: Math.max(0, E.perDawn + this.mods.guanoPerDawn),
       roosts: wreckedIncome,
-      kills: Math.floor(this.kills / this.rule.killsPerGuano) + (this.charms.has('scavenger') ? Math.floor(this.kills / 3) : 0),
+      kills: this.charms.has('scavenger') ? Math.floor(this.kills / 3) : 0,
       charms: this.passive.guanoPerDawn,
       clans: this.clusterGuano(this.nightFormations),
       interest: this.interestNow(),
@@ -1070,7 +1082,9 @@ export class Defense {
     const kc = u.traits.find((t) => t.kind === 'knockChance');
     let dealt = 0;
     for (const h of hits) {
+      const alive = !h.dead;
       dealt += this.damage(h, dmg);
+      if (alive && h.dead && u.home !== null) this.killsBy.set(u.home, (this.killsBy.get(u.home) ?? 0) + 1);
       if (kc && kc.kind === 'knockChance' && !h.dead && this.rng.next() < kc.chance) this.knock(h);
     }
     const style = attackStyle(u.traits, u.stats.range * U.rangePerTile);

@@ -367,7 +367,7 @@ registerScreen('battle', (app) => {
     guano.replaceChildren(h('span.g-icon', '◆'), h('b', String(d.guano)),
       h('span.small.muted', isDay ? ` guano · +${d.projectedIncome() + d.interestNow()} at dawn` : ' guano'),
       isDay && d.interestNow() ? h('span.small.interest', ` (${d.interestNow()} interest)`) : '');
-    guano.title = `Dawn income: +2, plus 1 per 2 bats housed in standing roosts, plus 1 per ${d.rule.killsPerGuano} kills, plus Clusters, plus interest: +1 per ${BALANCE.interest.per} unspent (max ${d.interestCap})`;
+    guano.title = `Dawn income: +2, plus 1 per 2 bats housed in standing roosts, plus Clusters, plus interest: +1 per ${BALANCE.interest.per} unspent (max ${d.interestCap})`;
     renderClans(isDay);
     piles.textContent = `deck ${d.drawPile.length} · discard ${d.discard.length}`;
     refreshBtn.textContent = `↻ ${d.refreshCost}`;
@@ -412,7 +412,7 @@ registerScreen('battle', (app) => {
       text = isDay
         ? d.day === 1
           ? `${d.previewHidden ? 'New Moon: you won\'t see tonight\'s enemies in advance.' : 'Tonight\'s enemies are shown at the top.'} Build roosts in the columns they'll come down. Two roosts of the same bat and level merge into one a level higher: tap one, then the other. ↻ rerolls the pool for ${d.refreshCost ? `${d.refreshCost} guano` : "free (Thrift, once a day)"}.`
-          : d.previewHidden ? `Dawn: +${d.lastIncome} guano. New Moon: tonight's enemies are hidden.` : `Dawn: +${d.lastIncome} guano (${d.lastIncomeParts.base} base, ${d.lastIncomeParts.roosts} from roosts, ${d.lastIncomeParts.kills} from kills${d.lastIncomeParts.clans ? `, ${d.lastIncomeParts.clans} clusters` : ''}${d.lastIncomeParts.interest ? `, ${d.lastIncomeParts.interest} interest` : ''}${d.lastIncomeParts.charms ? `, ${d.lastIncomeParts.charms} charms` : ''}). Tonight: ${tonightSummary(d)}.`
+          : d.previewHidden ? `Dawn: +${d.lastIncome} guano. New Moon: tonight's enemies are hidden.` : `Dawn: +${d.lastIncome} guano (${d.lastIncomeParts.base} base, ${d.lastIncomeParts.roosts} from roosts${d.lastIncomeParts.kills ? `, ${d.lastIncomeParts.kills} from kills` : ''}${d.lastIncomeParts.clans ? `, ${d.lastIncomeParts.clans} clusters` : ''}${d.lastIncomeParts.interest ? `, ${d.lastIncomeParts.interest} interest` : ''}${d.lastIncomeParts.charms ? `, ${d.lastIncomeParts.charms} charms` : ''}). Tonight: ${tonightSummary(d)}.`
         : 'Bats fly out on their own. Spells are instants: tap one twice to cast.';
     }
     info.textContent = text;
@@ -489,7 +489,7 @@ registerScreen('battle', (app) => {
           ? row('🩸', 'Vampire sharing', `At dawn, each vampire roost heals its neighbouring roosts ${BALANCE.adjacency.vampireDawnHealPct}%.`) : '',
       ].filter(Boolean)),
       sec('Economy', [
-        row('◆', 'Dawn income', `About +${d.projectedIncome() + d.interestNow()} guano: base, 1 per ${BALANCE.economy.batsPerGuano} bats housed, 1 per ${d.rule.killsPerGuano} kills, Clusters.`),
+        row('◆', 'Dawn income', `About +${d.projectedIncome() + d.interestNow()} guano: base, 1 per ${BALANCE.economy.batsPerGuano} bats housed, Clusters${d.charms.has('scavenger') ? ', Scavenger kills' : ''}.`),
         row('🏦', 'Interest', `+1 guano per ${BALANCE.interest.per} unspent at dawn, up to ${d.interestCap}. Now: +${d.interestNow()}.`),
         row('↻', 'Reroll', d.refreshCost ? `${d.refreshCost} guano` : 'Free (once today)'),
       ]),
