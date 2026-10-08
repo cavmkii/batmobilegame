@@ -1,7 +1,6 @@
 import { BALANCE } from '../data/balance';
 import { BAT_BY_ID } from '../data/bats';
 import { CLANS, RARITY_COLOR } from '../data/clans';
-import { RELIC_BY_ID } from '../data/relics';
 import { MODIFIER_BY_ID } from '../data/setup';
 import { BOSS_RULE_BY_ID } from '../data/bossRules';
 import { CHARM_BY_ID, CHARM_SLOTS } from '../data/charms';
@@ -42,7 +41,6 @@ registerScreen('battle', (app) => {
     deck: r.deck,
     matriarchId: r.matriarchId,
     roster: app.profile.roster,
-    relics: r.relics,
     caveHp: r.caveHp,
     caveMax: r.caveMax,
     seed: (r.rngState ^ hash(node.id)) >>> 0,
@@ -414,7 +412,7 @@ registerScreen('battle', (app) => {
       text = isDay
         ? d.day === 1
           ? `${d.previewHidden ? 'New Moon: you won\'t see tonight\'s enemies in advance.' : 'Tonight\'s enemies are shown at the top.'} Build roosts in the columns they'll come down. Two roosts of the same bat and level merge into one a level higher: tap one, then the other. ↻ rerolls the pool for ${d.refreshCost ? `${d.refreshCost} guano` : "free (Thrift, once a day)"}.`
-          : d.previewHidden ? `Dawn: +${d.lastIncome} guano. New Moon: tonight's enemies are hidden.` : `Dawn: +${d.lastIncome} guano (${d.lastIncomeParts.base} base, ${d.lastIncomeParts.roosts} from roosts, ${d.lastIncomeParts.kills} from kills${d.lastIncomeParts.clans ? `, ${d.lastIncomeParts.clans} clusters` : ''}${d.lastIncomeParts.interest ? `, ${d.lastIncomeParts.interest} interest` : ''}${d.lastIncomeParts.relic ? `, ${d.lastIncomeParts.relic} relic` : ''}). Tonight: ${tonightSummary(d)}.`
+          : d.previewHidden ? `Dawn: +${d.lastIncome} guano. New Moon: tonight's enemies are hidden.` : `Dawn: +${d.lastIncome} guano (${d.lastIncomeParts.base} base, ${d.lastIncomeParts.roosts} from roosts, ${d.lastIncomeParts.kills} from kills${d.lastIncomeParts.clans ? `, ${d.lastIncomeParts.clans} clusters` : ''}${d.lastIncomeParts.interest ? `, ${d.lastIncomeParts.interest} interest` : ''}${d.lastIncomeParts.charms ? `, ${d.lastIncomeParts.charms} charms` : ''}). Tonight: ${tonightSummary(d)}.`
         : 'Bats fly out on their own. Spells are instants: tap one twice to cast.';
     }
     info.textContent = text;
@@ -481,7 +479,6 @@ registerScreen('battle', (app) => {
         row(f.icon, `${f.name}${counts.get(f.id)! > 1 ? ` ×${counts.get(f.id)}` : ''}`, f.text(d.formationValue(f.id)), `level ${d.formationLevel(f.id)}`))),
       sec('Star charts studied', FORMATIONS.filter((f) => (r.formations[f.id] ?? 1) > 1).map((f) =>
         row('✦', f.name, `Level ${r.formations[f.id]}: ${f.text(d.formationValue(f.id))}`))),
-      sec('Relics', r.relics.filter((id) => RELIC_BY_ID[id]).map((id) => row(RELIC_BY_ID[id].icon, RELIC_BY_ID[id].name, RELIC_BY_ID[id].desc))),
       sec('Active spells', timed),
       sec('Economy', [
         row('◆', 'Dawn income', `About +${d.projectedIncome() + d.interestNow()} guano: base, 1 per ${BALANCE.economy.batsPerGuano} bats housed, 1 per ${d.rule.killsPerGuano} kills, Clusters.`),

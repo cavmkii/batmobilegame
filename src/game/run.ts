@@ -1,7 +1,6 @@
 import { BALANCE } from '../data/balance';
 import { BIOMES, BIOME_BY_ID, MODIFIER_BY_ID, rewardBonusPct } from '../data/setup';
 import { BAT_BY_ID } from '../data/bats';
-import { RELICS } from '../data/relics';
 import { SPELL_BY_ID } from '../data/spells';
 import type { Card, CardMod, ClanId, Rarity } from '../data/types';
 import { CHARMS, CHARM_BY_ID, CHARM_PRICE, CHARM_SLOTS, charmSellValue } from '../data/charms';
@@ -21,7 +20,6 @@ export interface Offer {
 
 export interface ShopState {
   cards: Offer[];
-  relic: string | null;
   charms: string[];
   enhance: CardMod[];
   chart: FormationId | null;
@@ -38,7 +36,6 @@ export interface RunState {
   /** Modifier ids chosen on the Play screen. */
   modifiers?: string[];
   deck: Card[];
-  relics: string[];
   caveHp: number;
   caveMax: number;
   figs: number;
@@ -52,8 +49,6 @@ export interface RunState {
   glowEarned: number;
   /** Card choices waiting after a battle. */
   draft: Offer[] | null;
-  /** Relic granted after an elite, shown on the reward screen. */
-  rewardRelic: string | null;
   shop: ShopState | null;
   event: string | null;
   status: 'active' | 'won' | 'lost';
@@ -103,7 +98,6 @@ export function startRun(p: Profile, matriarchId: string, flock: string[], seed:
     biome: BIOME_BY_ID[setup.biome ?? ''] ? setup.biome! : BIOMES[0].id,
     modifiers,
     deck: buildStartingDeck(flock),
-    relics: [],
     caveHp: cave,
     caveMax: cave,
     figs: 0,
@@ -114,7 +108,6 @@ export function startRun(p: Profile, matriarchId: string, flock: string[], seed:
     xpEarned: 0,
     glowEarned: 0,
     draft: null,
-    rewardRelic: null,
     shop: null,
     event: null,
     status: 'active',
@@ -148,7 +141,7 @@ export function enterNode(run: RunState, nodeId: string): MapNode {
   const rng = runRng(run);
   if (node.type === 'shop') run.shop = makeShop(run, rng);
   if (node.type === 'event') run.event = rng.pick(EVENTS).id;
-  if (node.type === 'treasure') run.rewardRelic = randomRelic(run, rng);
+  if (node.type === 'treasure') run.charmOffer = charmOffers(run, rng, 2);
   saveRng(run, rng);
   return node;
 }
@@ -162,7 +155,6 @@ export function leaveNode(run: RunState) {
   run.shop = null;
   run.event = null;
   run.draft = null;
-  run.rewardRelic = null;
   run.charmOffer = null;
   run.chartOffer = null;
 }
@@ -189,9 +181,9 @@ export function resolveBattle(run: RunState, won: boolean, caveHpLeft: number) {
   run.xpEarned += rw.xp;
   run.glowEarned += rw.glow;
   run.figs += rw.figs;
-  for (const id of run.relics) {
-    const e = RELICS.find((r) => r.id === id)!.effect;
-    if (e.kind === 'healAfterBattle') run.caveHp = Math.min(run.caveMax, run.caveHp + e.amount);
+  for (const id of run.charms) {
+    const e = CHARM_BY_ID[id]?.effect;
+    if (e?.kind === 'healAfterBattle') run.caveHp = Math.min(run.caveMax, run.caveHp + e.amount);
   }
   if (node.type === 'boss') {
     run.status = 'won';
@@ -336,20 +328,10 @@ export function heal(run: RunState, amount: number) {
   run.caveHp = Math.min(run.caveMax, Math.round(run.caveHp + amount));
 }
 
-export function randomRelic(run: RunState, rng: Rng): string | null {
-  const left = RELICS.filter((r) => !run.relics.includes(r.id));
-  return left.length ? rng.pick(left).id : null;
-}
-
-export function takeRelic(run: RunState, id: string | null) {
-  if (id && !run.relics.includes(id)) run.relics.push(id);
-}
-
 function makeShop(run: RunState, rng: Rng): ShopState {
   const cards = draftOffers(run, rng, 3).map((o) => ({ ...o, price: BALANCE.shop.cardPrice[offerRarity(o)] }));
   return {
     cards,
-    relic: rng.next() < 0.5 ? randomRelic(run, rng) : null,
     charms: charmOffers(run, rng, 2),
     enhance: rng.shuffle(ENHANCEMENTS.map((e) => e.id)).slice(0, 2),
     chart: rng.pick(FORMATIONS).id,
@@ -392,13 +374,14 @@ export const EVENTS: RunEvent[] = [
     options: [
       {
         label: 'Accept',
-        detail: 'Lose 15% max cave HP, gain a relic',
+        detail: 'Lose 15% max cave HP, gain a random charm',
         apply: (r, rng) => {
-          const id = randomRelic(r, rng);
+          const [id] = charmOffers(r, rng, 1);
           r.caveMax = Math.round(r.caveMax * 0.85);
           r.caveHp = Math.min(r.caveHp, r.caveMax);
-          takeRelic(r, id);
-          return id ? 'The owl keeps its word.' : 'The owl has nothing left to give. It keeps its taste anyway.';
+          if (!id) return 'The owl has nothing left to give. It keeps its taste anyway.';
+          if (!takeCharm(r, id)) return 'Your charm slots are full; the owl keeps its trinket, and its taste.';
+          return `The owl keeps its word: ${CHARM_BY_ID[id].name}.`;
         },
       },
       { label: 'Refuse', detail: 'Nothing happens', apply: () => 'You fly on.' },

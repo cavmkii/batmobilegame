@@ -5,7 +5,7 @@ import type { ClanId } from './types';
 
 /**
  * The saga map: an endless path of nodes, each a short run (a few levels and a boss) with a fixed
- * twist. Your collection carries between nodes; each run's deck, charms and relics don't.
+ * twist. Your collection carries between nodes; each run's deck, charms and star charts don't.
  * The first nodes are hand-made; after that they're generated from the node number, with
  * difficulty climbing like Balatro's stakes.
  */

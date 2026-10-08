@@ -129,22 +129,14 @@ export interface EnemyDef {
   fact: string;
 }
 
-export interface RelicDef {
-  id: string;
-  name: string;
-  desc: string;
-  icon: string;
-  effect: RelicEffect;
-}
-
-export type RelicEffect =
+/** Flat passive effects some charms carry (they used to be relics). */
+export type PassiveEffect =
   | { kind: 'guanoPerDawn'; amount: number }
   | { kind: 'refreshDiscount'; amount: number }
   | { kind: 'startGuano'; amount: number }
   | { kind: 'speedPct'; pct: number }
   | { kind: 'hpPct'; pct: number }
   | { kind: 'atkPct'; pct: number }
-  | { kind: 'formationBonus'; amount: number }
   | { kind: 'healAfterBattle'; amount: number }
   | { kind: 'startLevel'; amount: number };
 

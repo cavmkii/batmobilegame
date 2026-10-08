@@ -1,5 +1,5 @@
 import { BAT_BY_ID, STARTER_COMMONS } from '../data/bats';
-import { RELIC_BY_ID } from '../data/relics';
+import { CHARM_BY_ID, CHARM_SLOTS } from '../data/charms';
 import { BALANCE } from '../data/balance';
 import { newOwnedBat, type OwnedBat } from './progression';
 import type { RunState } from './run';
@@ -76,6 +76,15 @@ function migrate(p: Profile) {
     p.run.charmOffer ??= null;
     p.run.chartOffer ??= null;
     p.run.tally ??= { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0 };
+    // Relics became charms: carry over the ones that still exist, while slots last.
+    const legacyRun = p.run as typeof p.run & { relics?: string[]; rewardRelic?: unknown };
+    for (const id of legacyRun.relics ?? []) {
+      if (CHARM_BY_ID[id] && !p.run.charms.includes(id) && p.run.charms.length < CHARM_SLOTS) p.run.charms.push(id);
+    }
+    delete legacyRun.relics;
+    delete legacyRun.rewardRelic;
+    p.run.charms = p.run.charms.filter((id) => CHARM_BY_ID[id]);
+    if (p.run.shop) delete (p.run.shop as { relic?: unknown }).relic;
     if (p.run.shop) Object.assign(p.run.shop, { charms: p.run.shop.charms ?? [], enhance: p.run.shop.enhance ?? [], chart: p.run.shop.chart ?? null });
   }
   delete legacy.lastCommander;
@@ -99,7 +108,6 @@ export function loadProfile(): Profile {
     p.seenEnemies ??= [];
     migrate(p);
     // Relics can be renamed or removed between versions.
-    if (p.run) p.run.relics = p.run.relics.filter((id) => RELIC_BY_ID[id]);
     return p;
   } catch {
     return newProfile();

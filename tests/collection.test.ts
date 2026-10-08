@@ -62,7 +62,7 @@ describe('collection rewards', () => {
 describe('run setup: maps and modifiers', () => {
   const base = (over: Partial<import('../src/game/defense').DefenseConfig> = {}) => ({
     encounterId: 'moth_cloud', row: 0, deck: [], matriarchId: 'ghost_bat',
-    roster: { ghost_bat: newOwnedBat() }, relics: [], caveHp: 1000, caveMax: 1000, seed: 1, ...over,
+    roster: { ghost_bat: newOwnedBat() }, caveHp: 1000, caveMax: 1000, seed: 1, ...over,
   });
 
   it('weights terrain by biome', async () => {

@@ -490,7 +490,7 @@ registerScreen('saga', (app) => {
   setTimeout(() => list.querySelector('.current')?.scrollIntoView({ block: 'center' }), 30);
   return h('div.screen',
     header('Saga', () => app.go({ name: 'home' }), h('span.tag', `★ ${totalStars(p.saga.stars)}`)),
-    h('p.muted.small.center', 'Each node is a short run: a few levels and a boss. Your bats, levels and skills carry over; each run\'s deck, charms and relics start fresh. The path never ends.'),
+    h('p.muted.small.center', 'Each node is a short run: a few levels and a boss. Your bats, levels and skills carry over; each run\'s deck, charms and star charts start fresh. The path never ends.'),
     list,
   );
 });

@@ -5,7 +5,7 @@ import { formationValue, type FormationId } from '../data/formations';
 import { MATRIARCH_BY_ID, matriarchGuano } from '../data/matriarchs';
 import type { BossRuleId } from '../data/bossRules';
 import { ENCOUNTERS, ENEMY_BY_ID, type Encounter } from '../data/enemies';
-import { RELIC_BY_ID } from '../data/relics';
+import { CHARM_BY_ID } from '../data/charms';
 import { SPELL_BY_ID } from '../data/spells';
 import { BIOMES, BIOME_BY_ID, MODIFIER_BY_ID } from '../data/setup';
 import { TERRAIN } from '../data/terrain';
@@ -29,7 +29,6 @@ export interface DefenseConfig {
   deck: Card[];
   matriarchId: string;
   roster: Record<string, OwnedBat>;
-  relics: string[];
   caveHp: number;
   caveMax: number;
   seed: number;
@@ -82,7 +81,7 @@ export interface NightGroup {
   col: number;
 }
 
-/** Per-bat bonuses from terrain and relics, fixed when the bat leaves its roost. */
+/** Per-bat bonuses from terrain and charms, fixed when the bat leaves its roost. */
 interface Mods {
   atkPct: number;
   hastePct: number;
@@ -165,7 +164,7 @@ export class Defense {
   kills = 0;
   /** Guano earned at the last dawn, for the UI. */
   lastIncome = 0;
-  lastIncomeParts = { base: 0, roosts: 0, kills: 0, relic: 0, clans: 0, interest: 0 };
+  lastIncomeParts = { base: 0, roosts: 0, kills: 0, charms: 0, clans: 0, interest: 0 };
   /** Seconds since the last enemy fell; dawn waits for BALANCE.night.dawnDelay. */
   private clearTimer = 0;
   /** Seconds into the current night (or total, for animation). */
@@ -182,7 +181,8 @@ export class Defense {
     return this.cfg.biome ?? BIOMES[0].id;
   }
   private mods = { extraNights: 0, guanoPerDawn: 0, wavePct: 0 };
-  private relic = { guanoPerDawn: 0, refreshDiscount: 0, startGuano: 0, speedPct: 0, hpPct: 0, atkPct: 0, startLevel: 0, formationBonus: 0 };
+  /** Flat passives from charms. */
+  private passive = { guanoPerDawn: 0, refreshDiscount: 0, startGuano: 0, speedPct: 0, hpPct: 0, atkPct: 0, startLevel: 0 };
   readonly charms: Set<string>;
   /** Glass card uids that shattered this level (removed from the run deck afterwards). */
   shattered: string[] = [];
@@ -215,11 +215,11 @@ export class Defense {
     this.charms = new Set(cfg.charms ?? []);
     this.cave = { hp: cfg.caveHp, max: cfg.caveMax };
 
-    for (const id of cfg.relics) {
-      const e = RELIC_BY_ID[id]?.effect;
+    for (const id of cfg.charms ?? []) {
+      const e = CHARM_BY_ID[id]?.effect;
       if (!e) continue;
-      if (e.kind === 'speedPct' || e.kind === 'hpPct' || e.kind === 'atkPct') this.relic[e.kind] += e.pct;
-      else if (e.kind !== 'healAfterBattle') this.relic[e.kind] += e.amount;
+      if (e.kind === 'speedPct' || e.kind === 'hpPct' || e.kind === 'atkPct') this.passive[e.kind] += e.pct;
+      else if (e.kind !== 'healAfterBattle') this.passive[e.kind] += e.amount;
     }
     const m = MATRIARCH_BY_ID[cfg.matriarchId]?.effect;
     if (m?.kind === 'mergeRefund') this.rule.mergeRefund = m.guano;
@@ -236,7 +236,7 @@ export class Defense {
     this.freeRerolls = this.charms.has('thrift') ? 1 : 0;
     this.fillPool();
     const mo = cfg.roster[cfg.matriarchId];
-    this.guano = E.startGuano + this.relic.startGuano + (mo ? matriarchGuano(mo.level, mo.plus) : 0);
+    this.guano = E.startGuano + this.passive.startGuano + (mo ? matriarchGuano(mo.level, mo.plus) : 0);
   }
 
   // ---------------- Queries ----------------
@@ -247,7 +247,7 @@ export class Defense {
 
   get refreshCost(): number {
     if (this.freeRerolls > 0) return 0;
-    return Math.max(0, E.refreshCost - this.relic.refreshDiscount);
+    return Math.max(0, E.refreshCost - this.passive.refreshDiscount);
   }
 
   get bossRule(): BossRuleId | undefined {
@@ -360,7 +360,7 @@ export class Defense {
 
   /** A formation's level this run (star charts, Star Gazer, Star Map). */
   formationLevel(id: FormationId): number {
-    return (this.cfg.formationLevels?.[id] ?? 1) + (this.charms.has('star_gazer') ? 1 : 0) + this.relic.formationBonus;
+    return (this.cfg.formationLevels?.[id] ?? 1) + (this.charms.has('star_gazer') ? 1 : 0);
   }
 
   formationValue(id: FormationId): number {
@@ -684,13 +684,13 @@ export class Defense {
     slot.roost = { batId: bp.batId, bp, level: 1, hp: 0, maxHp: 0, respawnTimer: 0, ruined: false, glass: [] };
     slot.roost.maxHp = this.roostMaxHp(slot);
     slot.roost.hp = slot.roost.maxHp;
-    if (this.relic.startLevel + bonusLevels) this.levelUp(slot, this.relic.startLevel + bonusLevels, false);
+    if (this.passive.startLevel + bonusLevels) this.levelUp(slot, this.passive.startLevel + bonusLevels, false);
     this.effects.push({ kind: 'place', x: slot.x, y: slot.y, r: 0.6, t: this.clock });
   }
 
   private roostMaxHp(slot: Slot): number {
     const r = slot.roost!;
-    let hp = r.bp.roost.hp * (1 + (L.hpPct * (r.level - 1)) / 100) * (1 + this.relic.hpPct / 100);
+    let hp = r.bp.roost.hp * (1 + (L.hpPct * (r.level - 1)) / 100) * (1 + this.passive.hpPct / 100);
     if (slot.terrain === 'fig' && this.terrainMatches(slot.idx, r.batId)) hp *= 1.5;
     return Math.round(hp);
   }
@@ -826,7 +826,7 @@ export class Defense {
 
   /** What tomorrow's dawn would pay if no roost were wrecked tonight (kills not included). */
   projectedIncome(): number {
-    return Math.max(0, E.perDawn + this.mods.guanoPerDawn) + Math.floor(this.housedBats() / E.batsPerGuano) + this.relic.guanoPerDawn
+    return Math.max(0, E.perDawn + this.mods.guanoPerDawn) + Math.floor(this.housedBats() / E.batsPerGuano) + this.passive.guanoPerDawn
       + this.clusterGuano(this.formations());
   }
 
@@ -863,13 +863,13 @@ export class Defense {
       base: Math.max(0, E.perDawn + this.mods.guanoPerDawn),
       roosts: wreckedIncome,
       kills: Math.floor(this.kills / this.rule.killsPerGuano) + (this.charms.has('scavenger') ? Math.floor(this.kills / 3) : 0),
-      relic: this.relic.guanoPerDawn,
+      charms: this.passive.guanoPerDawn,
       clans: this.clusterGuano(this.nightFormations),
       interest: this.interestNow(),
     };
     const p = this.lastIncomeParts;
     this.lastInterest = p.interest;
-    this.lastIncome = p.base + p.roosts + p.kills + p.relic + p.clans + p.interest;
+    this.lastIncome = p.base + p.roosts + p.kills + p.charms + p.clans + p.interest;
     this.freeRerolls = this.charms.has('thrift') ? 1 : 0;
     this.guano += this.lastIncome;
     this.day++;
@@ -912,7 +912,7 @@ export class Defense {
 
   private modsFor(slot: Slot): Mods {
     const r = slot.roost!;
-    const m: Mods = { atkPct: this.relic.atkPct, hastePct: 0, lifesteal: 0, auraMult: 1 };
+    const m: Mods = { atkPct: this.passive.atkPct, hastePct: 0, lifesteal: 0, auraMult: 1 };
     if (r.glass.length) m.atkPct += this.charms.has('glazier') ? 120 : 60;
     const f = this.nightSlots.get(slot.idx);
     if (f?.has('pair')) m.atkPct += this.formationValue('pair');
@@ -927,7 +927,7 @@ export class Defense {
   }
 
   private toTiles(s: Stats, side: Unit['side']): Stats {
-    const speed = side === 'bat' ? s.speed * U.batSpeed * (1 + this.relic.speedPct / 100) : s.speed * U.enemySpeed;
+    const speed = side === 'bat' ? s.speed * U.batSpeed * (1 + this.passive.speedPct / 100) : s.speed * U.enemySpeed;
     return { ...s, range: Math.max(U.minMelee, s.range / U.rangePerTile), speed };
   }
 
@@ -957,7 +957,7 @@ export class Defense {
     const r = slot.roost!;
     const bp = r.bp;
     const lvl = 1 + (L.statPct * (r.level - 1)) / 100;
-    let hp = bp.stats.hp * lvl * (1 + this.relic.hpPct / 100);
+    let hp = bp.stats.hp * lvl * (1 + this.passive.hpPct / 100);
     let atk = bp.stats.atk * lvl;
     const mega = this.isMega(r);
     const armored = r.level >= L.armorLevel;
@@ -978,8 +978,8 @@ export class Defense {
   /** Summoned by spells: no home roost, level 1. */
   private spawnLooseBat(bp: UnitBlueprint, x: number, y: number) {
     this.addUnit({
-      side: 'bat', defId: bp.batId, x, y, home: null, mods: { ...NO_MODS, atkPct: this.relic.atkPct }, mega: false, armored: false,
-      stats: this.toTiles({ ...bp.stats, hp: Math.round(bp.stats.hp * (1 + this.relic.hpPct / 100)) }, 'bat'),
+      side: 'bat', defId: bp.batId, x, y, home: null, mods: { ...NO_MODS, atkPct: this.passive.atkPct }, mega: false, armored: false,
+      stats: this.toTiles({ ...bp.stats, hp: Math.round(bp.stats.hp * (1 + this.passive.hpPct / 100)) }, 'bat'),
       traits: bp.traits,
     });
   }

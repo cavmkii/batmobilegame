@@ -1,3 +1,5 @@
+import type { PassiveEffect } from './types';
+
 /**
  * Charms: the run's rule-benders (Balatro's jokers). Up to CHARM_SLOTS at once, bought in the
  * Fig Market or offered after elites, sold back for half. Most break a rule outright.
@@ -6,7 +8,9 @@ export const CHARM_SLOTS = 5;
 
 export type CharmId =
   | 'ripple' | 'foster' | 'vanguard' | 'windfall' | 'phoenix' | 'beacon' | 'hoard' | 'thrift'
-  | 'big_family' | 'night_shift' | 'twins' | 'scavenger' | 'deep_pockets' | 'glazier' | 'star_gazer' | 'second_wind';
+  | 'big_family' | 'night_shift' | 'twins' | 'scavenger' | 'deep_pockets' | 'glazier' | 'star_gazer' | 'second_wind'
+  // Former relics: flat passives.
+  | 'echo_chamber' | 'moon_roost' | 'guano_pile' | 'silk_wings' | 'thick_fur' | 'fangs' | 'fig_tree' | 'old_growth';
 
 export interface CharmDef {
   id: CharmId;
@@ -14,6 +18,8 @@ export interface CharmDef {
   icon: string;
   desc: string;
   rarity: 'common' | 'uncommon' | 'rare';
+  /** Flat passive (most charms are rules handled in the engine instead). */
+  effect?: PassiveEffect;
 }
 
 export const CHARMS: CharmDef[] = [
@@ -32,6 +38,14 @@ export const CHARMS: CharmDef[] = [
   { id: 'deep_pockets', name: 'Deep Pockets', icon: '🎒', rarity: 'uncommon', desc: 'The pool shows one more card.' },
   { id: 'glazier', name: 'Glazier', icon: '🪟', rarity: 'uncommon', desc: 'Roosts holding a Glass card deal +60% more damage (+120% total).' },
   { id: 'star_gazer', name: 'Star Gazer', icon: '🔭', rarity: 'uncommon', desc: 'Every formation counts as one level higher.' },
+  { id: 'echo_chamber', name: 'Echo Chamber', icon: '🔔', rarity: 'common', desc: '+1 guano every dawn.', effect: { kind: 'guanoPerDawn', amount: 1 } },
+  { id: 'moon_roost', name: 'Moonlit Roost', icon: '🌛', rarity: 'common', desc: 'Rerolls cost 1 less.', effect: { kind: 'refreshDiscount', amount: 1 } },
+  { id: 'guano_pile', name: 'Guano Pile', icon: '⛰', rarity: 'common', desc: 'Start each level with +4 guano.', effect: { kind: 'startGuano', amount: 4 } },
+  { id: 'silk_wings', name: 'Silk Wings', icon: '🪽', rarity: 'common', desc: 'Bats fly 20% faster.', effect: { kind: 'speedPct', pct: 20 } },
+  { id: 'thick_fur', name: 'Winter Fur', icon: '🧥', rarity: 'common', desc: 'Bats and roosts have +15% HP.', effect: { kind: 'hpPct', pct: 15 } },
+  { id: 'fangs', name: 'Whetted Fangs', icon: '🦷', rarity: 'common', desc: 'Bats deal +12% damage.', effect: { kind: 'atkPct', pct: 12 } },
+  { id: 'fig_tree', name: 'Fig Tree', icon: '🌳', rarity: 'common', desc: 'Heal the cave 60 after each level.', effect: { kind: 'healAfterBattle', amount: 60 } },
+  { id: 'old_growth', name: 'Old Growth', icon: '🪵', rarity: 'rare', desc: 'New roosts start at level 2.', effect: { kind: 'startLevel', amount: 1 } },
   { id: 'second_wind', name: 'Second Wind', icon: '💨', rarity: 'rare', desc: 'The first time the cave would fall, it holds at 1 HP. Then this charm breaks.' },
 ];
 

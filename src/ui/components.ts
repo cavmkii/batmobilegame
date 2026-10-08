@@ -1,6 +1,5 @@
 import { BAT_BY_ID } from '../data/bats';
 import { CLANS, RARITY_COLOR } from '../data/clans';
-import { RELIC_BY_ID } from '../data/relics';
 import { ENHANCE_BY_ID } from '../data/enhance';
 import { SPELL_BY_ID } from '../data/spells';
 import type { Card, ClanId, Rarity } from '../data/types';
@@ -85,15 +84,6 @@ export function patternGrid(batId: string, size: 'sm' | 'xs' = 'sm', pattern?: [
   return h(`div.pattern.${size}`, { style: `grid-template-columns: repeat(${reach * 2 + 1}, 1fr)`, title: 'Merging this roost also gives +1 to these tiles (hold a card to see them on the field)' }, ...cells);
 }
 
-export function relicChip(id: string) {
-  const r = RELIC_BY_ID[id];
-  return h('span.relic', { title: `${r.name}: ${r.desc}` }, r.icon);
-}
-
-export function relicCard(id: string, footer?: Node) {
-  const r = RELIC_BY_ID[id];
-  return h('div.relic-card', h('div.relic-icon', r.icon), h('div', h('b', r.name), h('div.muted', r.desc)), footer);
-}
 
 export function currencyBar(items: [string, string | number][]) {
   return h('div.currency', ...items.map(([icon, v]) => h('span', icon, ' ', typeof v === 'number' ? fmt(v) : v)));

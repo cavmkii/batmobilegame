@@ -18,7 +18,6 @@ function cfg(over: Partial<DefenseConfig> = {}): DefenseConfig {
     deck: buildStartingDeck(['little_brown', 'common_vampire']),
     matriarchId: 'ghost_bat',
     roster: roster(['ghost_bat', 'little_brown', 'common_vampire', 'fledgling']),
-    relics: [],
     caveHp: 1000,
     caveMax: 1000,
     seed: 3,

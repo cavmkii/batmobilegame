@@ -67,7 +67,6 @@ export const BALANCE = {
   },
   shop: {
     cardPrice: { common: 45, rare: 75, epic: 120, legendary: 200 } as Record<Rarity, number>,
-    relic: 150,
     remove: 75,
     heal: 50,
   },

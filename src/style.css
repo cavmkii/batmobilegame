@@ -130,11 +130,6 @@ header.bar .currency { font-size: 13px; gap: 8px; }
 .cf-footer button { width: 100%; }
 .spell-icon { font-size: 36px; line-height: 1; filter: drop-shadow(0 2px 0 #000); }
 
-.relic { font-size: 18px; }
-.relics { display: flex; gap: 4px; flex-wrap: wrap; }
-.relic-card { display: flex; gap: 10px; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; margin: 8px 0; }
-.relic-card > div:nth-child(2) { flex: 1; }
-.relic-icon { font-size: 30px; }
 
 /* Run HUD + map */
 .run-hud { background: var(--panel); border-radius: var(--radius); padding: 8px 10px; display: grid; gap: 6px; margin-bottom: 8px; }

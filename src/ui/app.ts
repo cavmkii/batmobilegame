@@ -70,7 +70,7 @@ function initialScreen(p: Profile): Screen {
   if (p.run) {
     // A reload mid-node restarts that node; the map is the safe re-entry point otherwise.
     const node = p.run.activeNode ? p.run.map.nodes[p.run.activeNode] : null;
-    if (node && (p.run.draft || p.run.rewardRelic || p.run.charmOffer || p.run.chartOffer)) return { name: 'reward' };
+    if (node && (p.run.draft || p.run.charmOffer || p.run.chartOffer)) return { name: 'reward' };
     if (node?.type === 'shop') return { name: 'shop' };
     if (node?.type === 'rest') return { name: 'rest' };
     if (node?.type === 'event') return { name: 'event' };

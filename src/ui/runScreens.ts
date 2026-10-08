@@ -14,10 +14,10 @@ import { BOSS_RULE_BY_ID } from '../data/bossRules';
 import {
   charmPrice, charmsFull, enhanceCard, sellCharm, studyChart, takeCharm,
   EVENT_BY_ID, addCard, availableNodes, cardName, chooseEventOption, combatRewards, deckFull, enterNode, finishRun, heal,
-  leaveNode, removeCard, takeRelic, upgradeCard, type Offer, type RunState,
+  leaveNode, removeCard, upgradeCard, type Offer, type RunState,
 } from '../game/run';
 import { registerScreen, type App } from './app';
-import { batImg, cardFace, currencyBar, fmt, header, relicCard, relicChip } from './components';
+import { batImg, cardFace, currencyBar, fmt, header } from './components';
 import { h, modal, toast } from './dom';
 
 export const NODE_ICON: Record<NodeType, string> = {
@@ -32,7 +32,6 @@ function runHud(app: App) {
   return h('div.run-hud',
     h('div.cave-hp', h('span', '🏔 Cave'), h('div.hpbar', h('div', { style: `width:${pct * 100}%` })), h('span.small', `${fmt(r.caveHp)}/${fmt(r.caveMax)}`)),
     currencyBar([['🫐', r.figs], ['✨', r.xpEarned], ['🪲', r.glowEarned]]),
-    h('div.relics', ...r.relics.map(relicChip)),
     h('div.charm-bar',
       ...Array.from({ length: CHARM_SLOTS }, (_, i) => {
         const id = r.charms[i];
@@ -205,14 +204,10 @@ registerScreen('reward', (app) => {
     app.save();
     app.go({ name: 'map' });
   };
-  const relicId = r.rewardRelic;
   return h('div.screen',
     header(node.type === 'treasure' ? 'Treasure' : 'Victory!'),
     runHud(app),
     rw ? h('p.center', `+${rw.figs} 🫐   +${rw.xp} ✨   +${rw.glow} 🪲`) : null,
-    relicId ? h('section', h('h2', 'Relic'), relicCard(relicId, h('button.primary', {
-      onclick: () => { takeRelic(r, relicId); r.rewardRelic = null; app.save(); app.refresh(); },
-    }, 'Take'))) : null,
     r.charmOffer?.length ? h('section',
       h('h2', 'Choose a charm'),
       charmsFull(r) ? h('p.small.muted', `Your ${CHARM_SLOTS} charm slots are full: sell one from the bar above to make room.`) : null,
@@ -234,8 +229,8 @@ registerScreen('reward', (app) => {
       }, 'Study'))) : null,
       h('button.ghost', { onclick: () => { r.draft = null; r.chartOffer = null; app.save(); app.refresh(); } }, 'Skip'),
     ) : null,
-    !r.draft?.length && !relicId && !r.charmOffer?.length ? h('button.big.primary', { onclick: finish }, 'Continue') : null,
-    !r.draft?.length && (relicId || r.charmOffer?.length) ? h('button.ghost', { onclick: finish }, 'Leave the rest') : null,
+    !r.draft?.length && !r.charmOffer?.length ? h('button.big.primary', { onclick: finish }, 'Continue') : null,
+    !r.draft?.length && r.charmOffer?.length ? h('button.ghost', { onclick: finish }, 'Leave the charm') : null,
   );
 });
 
@@ -290,11 +285,6 @@ registerScreen('shop', (app) => {
       disabled: r.figs < STAR_CHART_PRICE,
       onclick: buy(STAR_CHART_PRICE, () => { studyChart(r, s.chart!); s.chart = null; }),
     }, `🫐 ${STAR_CHART_PRICE}`)) : null,
-    s.relic ? h('h2', 'Relic') : null,
-    s.relic ? relicCard(s.relic, h('button.primary', {
-      disabled: r.figs < P.relic,
-      onclick: buy(P.relic, () => { takeRelic(r, s.relic); s.relic = null; }),
-    }, `🫐 ${P.relic}`)) : null,
     h('div.actions',
       h('button', {
         disabled: s.removeUsed || r.figs < P.remove,
