@@ -50,6 +50,3 @@ export const MATRIARCHS: MatriarchDef[] = [
 
 export const MATRIARCH_BY_ID: Record<string, MatriarchDef> = Object.fromEntries(MATRIARCHS.map((m) => [m.batId, m]));
 
-/** Levelling a matriarch: +1 starting guano each level for every this many levels (plus-levels count). */
-export const MATRIARCH_GUANO_EVERY = 3;
-export const matriarchGuano = (level: number, plus = 0): number => Math.floor((level + plus - 1) / MATRIARCH_GUANO_EVERY);

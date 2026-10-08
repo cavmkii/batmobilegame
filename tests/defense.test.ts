@@ -4,7 +4,7 @@ import { BAT_BY_ID } from '../src/data/bats';
 import { ENCOUNTERS } from '../src/data/enemies';
 import { SPELL_BY_ID } from '../src/data/spells';
 import type { Card } from '../src/data/types';
-import { Defense, type DefenseConfig } from '../src/game/defense';
+import { Defense, armorMult, type DefenseConfig } from '../src/game/defense';
 import { buildStartingDeck, newCard } from '../src/game/deck';
 import { blueprint, newOwnedBat, type OwnedBat } from '../src/game/progression';
 
@@ -351,9 +351,10 @@ describe('matriarchs', () => {
     expect(g.slots[at(0, 0)].roost!.level + g.slots[at(4, 0)].roost!.level).toBe(3);
   });
 
-  it('a levelled matriarch adds starting guano', () => {
+  it('a matriarch\'s tree adds starting guano once allocated', () => {
     const lv1 = new Defense(cfg()).guano;
-    const lv7 = new Defense(cfg({ roster: { ...roster(['little_brown', 'common_vampire', 'fledgling']), ghost_bat: { ...newOwnedBat(), level: 7 } } })).guano;
+    const tree = { ...newOwnedBat(), level: 7, tree: ['h1'] };
+    const lv7 = new Defense(cfg({ roster: { ...roster(['little_brown', 'common_vampire', 'fledgling']), ghost_bat: tree } })).guano;
     expect(lv7).toBe(lv1 + 2);
   });
 });
@@ -620,7 +621,7 @@ describe('trim-and-fix round', () => {
     expect(d.discard.find((c) => c.uid !== echo.uid && c.id === 'little_brown')!.mod).toBeUndefined();
   });
 
-  it('armoured bats take less damage', () => {
+  it('armour reduces damage by K / (K + armour), for bats and enemies', () => {
     const d = big();
     put(d, at(0, 0), 'little_brown', BALANCE.roostLevel.armorLevel);
     d.endDay();
@@ -629,7 +630,12 @@ describe('trim-and-fix round', () => {
     expect(bat.armored).toBe(true);
     const hp = bat.hp;
     (d as unknown as { damage(t: unknown, n: number): number }).damage(bat, 10);
-    expect(hp - bat.hp).toBeCloseTo(10 * (1 - BALANCE.roostLevel.armorPct / 100));
+    const A = BALANCE.armor.perRoostLevel * (BALANCE.roostLevel.armorLevel - 1);
+    expect(bat.armor).toBe(A);
+    expect(hp - bat.hp).toBeCloseTo(10 * BALANCE.armor.K / (BALANCE.armor.K + A));
+    expect(armorMult(100)).toBeCloseTo(0.5);
+    (d as unknown as { spawnEnemy(id: string, x: number): void }).spawnEnemy('beetle', 1);
+    expect(d.units[d.units.length - 1].armor).toBe(25);
   });
 
   it('Hunt loses a level where too many enemies got away; Fragile blocks cave healing', () => {

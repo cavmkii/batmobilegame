@@ -281,6 +281,26 @@ export const ENEMY_SPRITES: Record<string, EnemySprite> = {
       '...oo.o.oo.o..',
     ],
   },
+  raccoon: {
+    palette: { o: '#100c0c', b: '#9a9aa2', B: '#6a6a72', w: '#f4f0e8', m: '#16161a', e: '#ffe060', n: '#000000', r: '#26262c', l: '#d0d0d8', p: '#c89a7a' },
+    grid: [
+      '..........oo...oo.',
+      '..........obo.obo.',
+      '.........obbbbbbbo',
+      '.........owwbbbwwo',
+      '.........mmmmmmmmo',
+      '.........mmemmmemo',
+      '.........owwwwwwwn',
+      'olo.......owwwwwo.',
+      'orlo....oobbbbbbo.',
+      '.olro.oobbBbBbBbbo',
+      '..orlobbbBbbbbbbbo',
+      '...olrbbbbbbbbbbo.',
+      '....obbbbbbbbbbo..',
+      '....opo.op..opo.op',
+      '....oo..oo..oo..oo',
+    ],
+  },
   hawk: {
     palette: { o: '#140c08', b: '#7a5030', B: '#4a3018', w: '#e8dcc8', y: '#ffc020', e: '#000000', s: '#f0c060' },
     grid: [

@@ -45,7 +45,7 @@ export const BATS: BatDef[] = [
     fact: 'Migrates in colonies of up to ten million to Kasanka, Zambia, every year.',
   },
   {
-    id: 'hammerhead', name: 'Hammer-headed Bat', short: 'Hammerhead', species: 'Hypsignathus monstrosus', clans: ['FRU'], rarity: 'epic',
+    id: 'hammerhead', armor: 20, name: 'Hammer-headed Bat', short: 'Hammerhead', species: 'Hypsignathus monstrosus', clans: ['FRU'], rarity: 'epic',
     cost: 4, pattern: [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]], roost: { hp: 500, count: 1, respawn: 14 }, stats: { hp: 700, atk: 45, range: 40, rate: 1.5, speed: 25, knockbacks: 4 },
     traits: [{ kind: 'aoe' }, { kind: 'knockChance', chance: 0.35 }],
     evolved: { name: 'Thunderhead', trait: { kind: 'healAura', amount: 10, every: 2, radius: 80 } }, talents: [hp(25), cheap],
@@ -96,7 +96,7 @@ export const BATS: BatDef[] = [
     fact: 'Feeds mostly on bird blood, roosting chickens included.',
   },
   {
-    id: 'white_winged', name: 'White-winged Vampire Bat', short: 'White-wing', species: 'Diaemus youngi', clans: ['SAN'], rarity: 'epic',
+    id: 'white_winged', armor: 10, name: 'White-winged Vampire Bat', short: 'White-wing', species: 'Diaemus youngi', clans: ['SAN'], rarity: 'epic',
     cost: 4, pattern: [[0, -1], [-1, 0], [1, 0], [0, 1], [-1, -1], [1, -1], [-1, 1], [1, 1]], roost: { hp: 200, count: 2, respawn: 8 }, stats: { hp: 200, atk: 60, range: 35, rate: 1.0, speed: 50, knockbacks: 2 },
     traits: [{ kind: 'lifesteal', pct: 30 }, { kind: 'deathHeal', amount: 80, radius: 150 }],
     evolved: { name: 'Pale Communion', trait: { kind: 'atkAura', pct: 15, radius: 100 } }, talents: [hp(25), cheap],
@@ -113,7 +113,7 @@ export const BATS: BatDef[] = [
     fact: 'Mostly eats insects caught over water, plus the occasional small fish.',
   },
   {
-    id: 'greater_bulldog', name: 'Greater Bulldog Bat', short: 'Gr Bulldog', species: 'Noctilio leporinus', clans: ['PIS'], rarity: 'rare',
+    id: 'greater_bulldog', armor: 10, name: 'Greater Bulldog Bat', short: 'Gr Bulldog', species: 'Noctilio leporinus', clans: ['PIS'], rarity: 'rare',
     cost: 3, pattern: [[-1, -1], [1, -1]], roost: { hp: 140, count: 2, respawn: 9 }, stats: { hp: 120, atk: 55, range: 200, rate: 2.0, speed: 30, knockbacks: 2 },
     traits: [{ kind: 'multiHit', targets: 3 }],
     evolved: { name: 'Harpoon Lip' }, talents: [atk(25), hp(20)],
@@ -217,7 +217,7 @@ export const BATS: BatDef[] = [
     fact: 'A solitary tree-rooster with frosted, white-tipped fur that migrates long distances. A close relative, the Hawaiian hoary bat, is Hawaii\'s only native land mammal.',
   },
   {
-    id: 'big_brown', name: 'Big Brown Bat', short: 'Big Brown', species: 'Eptesicus fuscus', clans: ['INS'], rarity: 'common',
+    id: 'big_brown', armor: 10, name: 'Big Brown Bat', short: 'Big Brown', species: 'Eptesicus fuscus', clans: ['INS'], rarity: 'common',
     cost: 2, pattern: [[0, 1]], roost: { hp: 150, count: 2, respawn: 6 },
     stats: { hp: 120, atk: 18, range: 30, rate: 1.0, speed: 45, knockbacks: 2 }, traits: [],
     evolved: { name: 'Beetle Crusher', trait: { kind: 'knockChance', chance: 0.15 } }, talents: [hp(20), atk(20)],
@@ -241,7 +241,7 @@ export const BATS: BatDef[] = [
     fact: 'Its ears are over an inch long. When it hibernates it curls them back against its head like a ram\'s horns.',
   },
   {
-    id: 'pallid', name: 'Pallid Bat', short: 'Pallid', species: 'Antrozous pallidus', clans: ['INS'], rarity: 'epic',
+    id: 'pallid', armor: 15, name: 'Pallid Bat', short: 'Pallid', species: 'Antrozous pallidus', clans: ['INS'], rarity: 'epic',
     cost: 4, pattern: [[-1, 1], [0, 1], [1, 1]], roost: { hp: 220, count: 2, respawn: 9 },
     stats: { hp: 180, atk: 40, range: 35, rate: 1.2, speed: 40, knockbacks: 3 }, traits: [{ kind: 'aoe' }],
     evolved: { name: 'Scorpion Eater', trait: { kind: 'lifesteal', pct: 20 } }, talents: [hp(25), atk(20)],

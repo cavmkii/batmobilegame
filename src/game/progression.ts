@@ -12,6 +12,8 @@ export interface OwnedBat {
   talents?: [boolean, boolean];
   /** Skill-tree picks per fork (0 or 1), -1 or missing = not chosen. */
   skills?: number[];
+  /** Matriarchs: allocated passive-tree node ids (see data/matriarchTree.ts). */
+  tree?: string[];
 }
 
 export const newOwnedBat = (): OwnedBat => ({ level: 1, plus: 0, evolved: false, skills: [] });

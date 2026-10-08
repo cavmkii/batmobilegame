@@ -8,6 +8,7 @@ import { ENHANCEMENTS, ENHANCE_BY_ID, isSharp } from '../data/enhance';
 import { FORMATIONS, type FormationId } from '../data/formations';
 import { GOALS, SAGA_ROWS, sagaMaxDepth, sagaNode, type GoalId, type ObjectiveId } from '../data/saga';
 import { buildStartingDeck, draftPool, newCard, validateSetup } from './deck';
+import { treeEffects, treeSum } from './matriarchTree';
 import { generateMap, type MapNode, type RunMap } from './map';
 import type { Profile } from './profile';
 import { Rng } from './rng';
@@ -52,8 +53,10 @@ export interface RunState {
   shop: ShopState | null;
   event: string | null;
   status: 'active' | 'won' | 'lost';
-  /** Charm ids (up to CHARM_SLOTS). */
+  /** Charm ids (up to charmSlots). */
   charms: string[];
+  /** CHARM_SLOTS plus the matriarch tree's Trinket Pouch. */
+  charmSlots?: number;
   /** Formation levels from star charts. */
   formations: Partial<Record<FormationId, number>>;
   /** Charm choice waiting after an elite. */
@@ -112,6 +115,7 @@ export function startRun(p: Profile, matriarchId: string, flock: string[], seed:
     event: null,
     status: 'active',
     charms: [],
+    charmSlots: CHARM_SLOTS + treeSum(treeEffects(matriarchId, p.roster[matriarchId]), 'charmSlot'),
     formations: {},
     charmOffer: null,
     chartOffer: null,
@@ -223,7 +227,8 @@ export function charmOffers(run: RunState, rng: Rng, n: number): string[] {
   return out;
 }
 
-export const charmsFull = (run: RunState) => run.charms.length >= CHARM_SLOTS;
+export const charmSlots = (run: RunState) => run.charmSlots ?? CHARM_SLOTS;
+export const charmsFull = (run: RunState) => run.charms.length >= charmSlots(run);
 
 export function takeCharm(run: RunState, id: string): boolean {
   if (!CHARM_BY_ID[id] || run.charms.includes(id) || charmsFull(run)) return false;

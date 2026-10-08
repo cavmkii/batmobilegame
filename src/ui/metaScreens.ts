@@ -5,7 +5,9 @@ import { BOSS_RULE_BY_ID } from '../data/bossRules';
 import { FORMATIONS } from '../data/formations';
 import { GOALS, OBJECTIVES, sagaNode, type SagaNode } from '../data/saga';
 import { BIOME_BY_ID, MODIFIER_BY_ID } from '../data/setup';
-import { MATRIARCH_BY_ID, MATRIARCH_GUANO_EVERY, matriarchGuano } from '../data/matriarchs';
+import { MATRIARCH_BY_ID } from '../data/matriarchs';
+import { TREE_LINKS, treeNodes } from '../data/matriarchTree';
+import { allocate, allocated, canAllocate, canRefund, pointsLeft, refund, treePoints } from '../game/matriarchTree';
 import { flockOptions, validateSetup } from '../game/deck';
 import { canTakePlus, pull, resolveDupe, type PullResult } from '../game/gacha';
 import { chooseStarter, exportSave, importSave, resetProfile } from '../game/profile';
@@ -271,7 +273,7 @@ registerScreen('bat', (app, s) => {
     ),
     def.matriarch ? null : h('p.small', attackLabel(bp.traits, bp.stats.range)),
     def.matriarch ? h('p', h('b', MATRIARCH_BY_ID[s.id].rule), ' ', h('span.muted', MATRIARCH_BY_ID[s.id].why)) : null,
-    def.matriarch ? h('p.small', `Matriarchs don't fight. Every ${MATRIARCH_GUANO_EVERY} levels she adds +1 starting guano to each level of a run she leads (now +${matriarchGuano(o.level, o.plus)}).`) : null,
+    def.matriarch ? matriarchTreeView(app, s.id) : null,
     bp.traits.length && !def.matriarch ? h('ul.traits', ...bp.traits.map((t) => h('li', describeTrait(t)))) : null,
     h('p.fact', '🦇 ', def.fact),
     h('div.actions',
@@ -303,6 +305,57 @@ registerScreen('bat', (app, s) => {
     def.evolved.trait ? h('p.muted.small', `Evolved form gains: ${describeTrait(def.evolved.trait)}. Stats ×${BALANCE.evolvedMult}.`) : null,
   );
 });
+
+// ---------------- Matriarch passive tree ----------------
+
+let treeSel: string | null = null;
+
+/** The matriarch's passive tree: tap a node to see it, then allocate or refund. */
+function matriarchTreeView(app: App, id: string) {
+  const o = app.profile.roster[id];
+  const nodes = treeNodes(id);
+  const have = allocated(id, o);
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 100 100');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.classList.add('mt-links');
+  for (const [a, b] of TREE_LINKS) {
+    const na = nodes.find((n) => n.id === a);
+    const nb = nodes.find((n) => n.id === b);
+    if (!na || !nb) continue;
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', String(na.x * 100));
+    line.setAttribute('y1', String(na.y * 100));
+    line.setAttribute('x2', String(nb.x * 100));
+    line.setAttribute('y2', String(nb.y * 100));
+    if (have.has(a) && have.has(b)) line.setAttribute('class', 'on');
+    svg.append(line);
+  }
+  const sel = nodes.find((n) => n.id === treeSel) ?? null;
+  const act = (fn: () => boolean) => () => { if (fn()) app.save(); app.refresh(); };
+  return h('section',
+    h('h2', 'Matriarch tree'),
+    h('p.muted.small', 'Matriarchs don\'t fight; they lead. Each level above 1 gives a point to spend on a node next to one you have. Keystones are strong but cost you something. Points can be moved any time between runs.'),
+    h('div.mt-points', h('b', `${pointsLeft(id, o)}`), ` of ${treePoints(o)} points free`),
+    h('div.mtree', svg, ...nodes.map((n) => {
+      const cls = ['mt-node', n.size, have.has(n.id) ? 'on' : canAllocate(id, o, n.id) ? 'open' : '', treeSel === n.id ? 'sel' : ''].filter(Boolean).join('.');
+      return h(`button.${cls}`, {
+        style: `left:${6 + n.x * 88}%;top:${6 + n.y * 88}%`,
+        title: n.name,
+        onclick: () => { treeSel = n.id; app.refresh(); },
+      }, n.size === 'root' ? '♛' : n.size === 'keystone' ? '◆' : n.size === 'notable' ? '★' : '');
+    })),
+    sel ? h('div.mt-detail',
+      h('b', sel.name), h('div.small', sel.desc),
+      sel.id === 'root' ? null
+        : have.has(sel.id)
+          ? h('button', { disabled: !canRefund(id, o, sel.id), onclick: act(() => refund(id, o, sel.id)) }, canRefund(id, o, sel.id) ? 'Refund point' : 'Refund the nodes beyond it first')
+          : h('button.primary', { disabled: !canAllocate(id, o, sel.id), onclick: act(() => allocate(id, o, sel.id)) },
+            canAllocate(id, o, sel.id) ? 'Allocate' : pointsLeft(id, o) <= 0 ? 'No points free (level her up)' : 'Not connected yet'),
+    ) : h('p.small.muted', 'Tap a node to see what it does.'),
+    (o.tree?.length ?? 0) ? h('button.ghost.small', { onclick: () => { o.tree = []; treeSel = null; app.save(); app.refresh(); } }, 'Reset tree') : null,
+  );
+}
 
 // ---------------- Summon ----------------
 

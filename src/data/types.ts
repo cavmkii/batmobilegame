@@ -88,6 +88,8 @@ export interface BatDef {
    */
   pattern: [number, number][];
   traits: Trait[];
+  /** Base armour (see BALANCE.armor); roost levels add more. */
+  armor?: number;
   evolved: { name: string; trait?: Trait };
   talents: [Talent, Talent];
   sprite: SpriteSpec;
@@ -127,6 +129,8 @@ export interface EnemyDef {
   threat: number;
   /** Field-guide entry. */
   fact: string;
+  /** Armour (see BALANCE.armor). */
+  armor?: number;
   /** Palette overrides on the shared sprite (bosses reuse a smaller enemy's art). */
   tint?: Record<string, string>;
 }

@@ -6,13 +6,13 @@ import { ENCOUNTERS } from '../data/enemies';
 import type { Card } from '../data/types';
 import type { NodeType } from '../game/map';
 import { copiesIn } from '../game/deck';
-import { CHARM_BY_ID, CHARM_SLOTS, charmSellValue } from '../data/charms';
+import { CHARM_BY_ID, charmSellValue } from '../data/charms';
 import { ENHANCE_BY_ID } from '../data/enhance';
 import { FORMATION_BY_ID, STAR_CHART_PRICE, type FormationId } from '../data/formations';
 import { GOALS, sagaNode } from '../data/saga';
 import { BOSS_RULE_BY_ID } from '../data/bossRules';
 import {
-  charmPrice, charmsFull, enhanceCard, sellCharm, studyChart, takeCharm,
+  charmPrice, charmSlots, charmsFull, enhanceCard, sellCharm, studyChart, takeCharm,
   EVENT_BY_ID, addCard, availableNodes, cardName, chooseEventOption, combatRewards, deckFull, enterNode, finishRun, heal,
   leaveNode, removeCard, upgradeCard, type Offer, type RunState,
 } from '../game/run';
@@ -33,7 +33,7 @@ function runHud(app: App) {
     h('div.cave-hp', h('span', '🏔 Cave'), h('div.hpbar', h('div', { style: `width:${pct * 100}%` })), h('span.small', `${fmt(r.caveHp)}/${fmt(r.caveMax)}`)),
     currencyBar([['🫐', r.figs], ['✨', r.xpEarned], ['🪲', r.glowEarned]]),
     h('div.charm-bar',
-      ...Array.from({ length: CHARM_SLOTS }, (_, i) => {
+      ...Array.from({ length: charmSlots(r) }, (_, i) => {
         const id = r.charms[i];
         return id
           ? h('button.charm-slot.full', { onclick: () => charmDialog(app, id) }, CHARM_BY_ID[id].icon)
@@ -210,7 +210,7 @@ registerScreen('reward', (app) => {
     rw ? h('p.center', `+${rw.figs} 🫐   +${rw.xp} ✨   +${rw.glow} 🪲`) : null,
     r.charmOffer?.length ? h('section',
       h('h2', 'Choose a charm'),
-      charmsFull(r) ? h('p.small.muted', `Your ${CHARM_SLOTS} charm slots are full: sell one from the bar above to make room.`) : null,
+      charmsFull(r) ? h('p.small.muted', `Your ${charmSlots(r)} charm slots are full: sell one from the bar above to make room.`) : null,
       ...r.charmOffer.map((id) => charmCard(id, h('button.primary', {
         disabled: charmsFull(r),
         onclick: () => { takeCharm(r, id); r.charmOffer = null; app.save(); app.refresh(); },

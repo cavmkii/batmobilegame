@@ -12,6 +12,34 @@ the source of round-to-round variety. The meta loop (roster, gacha, run map) is 
 Numbers below are starting values. All of them live in `src/data/` and
 `src/data/balance.ts` so they can be tuned without touching logic.
 
+## 000. v0.8: matriarch trees, armour, the raccoon
+
+- **Matriarch passive tree** (Path of Exile, much smaller). One point per matriarch level above 1
+  (plus-levels count), spent on nodes connected to ones you already have, starting from her root.
+  Points move freely between runs; a leaf can be refunded if everything else stays connected.
+  - Hoard (economy): +2 starting guano → interest cap +1 → +1 guano each dawn → **Miser**
+    (keystone: interest cap +4, rerolls cost 1 more).
+  - Colony (toughness): roosts +15% HP → bats +10% HP → +10 armour → **Fortress** (+25 armour,
+    roosts +30% HP, but bats deal 15% less damage).
+  - Hunt (damage): +8% attack → attack 8% faster → +12% attack → **Bloodlust** (+30% attack, but
+    roosts −25% HP).
+  - Her own branch: two small nodes and a notable that strengthens her rule. Flying Fox: merges
+    refund 1 more guano. Ghost Bat: Feeding Roost also levels the second-best hunter. Spectral Bat:
+    merge into roosts up to 2 levels above. Greater Noctule: one more pool card.
+  - Cross links (Hoard↔Colony, Colony↔Trinket Pouch↔her branch↔Hunt) let paths weave.
+    Trinket Pouch gives +1 charm slot.
+  - 15 nodes: a level-10 matriarch has 9 points, so you pick a direction; it takes level 16+
+    (evolution) to fill the tree. This replaces "+1 starting guano per 3 levels".
+- **Armour** is a stat on bats and enemies: damage taken × K / (K + armour), K = 100 (as in
+  LoL/Dota/Diablo): 50 armour takes a third off, 100 halves it, and it never reaches 100%.
+  Bats gain 8 armour per roost level above 1 (+40 for a mega bat); some species have base armour
+  (Hammer-headed 20, Pallid 15, Big Brown 10, …). Armoured enemies: beetles 25, snakes 10, cats 15,
+  owls 20–30, bosses 10–40. The armour art still shows from roost level 5.
+- **Raccoon Den**, a fifth boss, with new pixel art (masked face, ringed tail). Armoured (35), area
+  attack, knockback. Raccoons are recorded catching bats at roost exits and taking fallen pups.
+- Balance: with enemy and bat armour both in, bot results at roster level 1 are within noise of v0.7
+  (bosses 1–5/8; the raccoon 1–4/8).
+
 ## 00. v0.7: trim and fix
 
 From the mechanics audit. What changed:

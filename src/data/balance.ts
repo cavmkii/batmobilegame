@@ -20,9 +20,9 @@ export const BALANCE = {
    * (a pool card counts as a level-1 roost). Each level adds a bat (up to maxExtraBats) and
    * statPct to bat stats, so a merged roost is worth roughly the two it replaced.
    * From megaLevel a roost holds one mega bat instead of a group. There's no cap: stats keep growing.
-   * Bats from roosts at armorLevel and up wear armour: they take armorPct less damage.
+   * Bats from roosts at armorLevel and up are drawn wearing armour (their armour stat grows every level).
    */
-  roostLevel: { megaLevel: 10, armorLevel: 5, armorPct: 20, statPct: 25, hpPct: 20, batsPerLevel: 1, maxExtraBats: 4, megaHpMult: 3, megaAtkMult: 1.5, megaRespawnMult: 2 },
+  roostLevel: { megaLevel: 10, armorLevel: 5, statPct: 25, hpPct: 20, batsPerLevel: 1, maxExtraBats: 4, megaHpMult: 3, megaAtkMult: 1.5, megaRespawnMult: 2 },
   /** An enemy that reaches the cave hits once for atk × leakMult, then is gone (classic TD leak). */
   /** duskLead: seconds before the first enemy enters, so roosts can release their first bats. */
   night: { maxSeconds: 80, duskLead: 5, groupGap: 3, spawnGap: 0.7, leakMult: 4, dawnDelay: 2 },
@@ -30,6 +30,12 @@ export const BALANCE = {
   rebuildHpPct: 50,
   knockback: { distance: 0.5, duration: 0.4 },
   adjacency: { vampireDawnHealPct: 20 },
+  /**
+   * Armour, as in LoL/Dota/Diablo: damage taken × K / (K + armour), so each point matters a bit less
+   * than the last and it never reaches 100%. 100 armour halves damage.
+   * Bats gain perRoostLevel armour for each roost level above 1; a mega bat gets `mega` more.
+   */
+  armor: { K: 100, perRoostLevel: 8, mega: 40 },
   /** Stats gain this fraction of base per level above 1. */
   levelScaling: 0.2,
   /** Enemy stats scale this much per map row. */

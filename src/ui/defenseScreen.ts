@@ -3,7 +3,7 @@ import { BAT_BY_ID } from '../data/bats';
 import { CLANS, RARITY_COLOR } from '../data/clans';
 import { MODIFIER_BY_ID } from '../data/setup';
 import { BOSS_RULE_BY_ID } from '../data/bossRules';
-import { CHARM_BY_ID, CHARM_SLOTS } from '../data/charms';
+import { CHARM_BY_ID } from '../data/charms';
 import { ENHANCE_BY_ID, isSharp } from '../data/enhance';
 import { FORMATIONS, type FormationId } from '../data/formations';
 import { MATRIARCH_BY_ID } from '../data/matriarchs';
@@ -14,7 +14,7 @@ import { TERRAIN } from '../data/terrain';
 import type { Card } from '../data/types';
 import { Defense } from '../game/defense';
 import { ATTACK_LABEL, attackLabel, attackStyle, blueprint, describeTrait } from '../game/progression';
-import { applyLevelResult, resolveBattle } from '../game/run';
+import { applyLevelResult, charmSlots, resolveBattle } from '../game/run';
 import { FORMATION_COLOR, FieldRenderer, VIEW_H, VIEW_W, type Highlight } from '../render/fieldRenderer';
 import { registerScreen } from './app';
 import { batImg, clanPips, patternGrid, rarityOf } from './components';
@@ -473,7 +473,7 @@ registerScreen('battle', (app) => {
         ...(r.modifiers ?? []).map((id) => MODIFIER_BY_ID[id] ? row(MODIFIER_BY_ID[id].icon, MODIFIER_BY_ID[id].name, MODIFIER_BY_ID[id].desc) : ''),
         r.difficulty && r.difficulty > 1 ? row('📈', 'Saga depth', `Enemies have +${Math.round((r.difficulty - 1) * 100)}% HP and attack.`) : '',
       ].filter(Boolean)),
-      sec(`Charms (${d.charms.size}/${CHARM_SLOTS})`, [...d.charms].map((id) => row(CHARM_BY_ID[id].icon, CHARM_BY_ID[id].name, CHARM_BY_ID[id].desc))),
+      sec(`Charms (${d.charms.size}/${charmSlots(r)})`, [...d.charms].map((id) => row(CHARM_BY_ID[id].icon, CHARM_BY_ID[id].name, CHARM_BY_ID[id].desc))),
       sec(isDay ? 'Formations standing (lock in at dusk)' : 'Formations tonight', FORMATIONS.filter((f) => counts.has(f.id)).map((f) =>
         row(f.icon, `${f.name}${counts.get(f.id)! > 1 ? ` ×${counts.get(f.id)}` : ''}`, f.text(d.formationValue(f.id)), `level ${d.formationLevel(f.id)}`))),
       sec('Star charts studied', FORMATIONS.filter((f) => (r.formations[f.id] ?? 1) > 1).map((f) =>
@@ -483,7 +483,7 @@ registerScreen('battle', (app) => {
         row('🎯', 'Enemy targets', 'Enemies walk straight down their column. They attack bats in reach first, then the nearest roost in their column, then the cave.'),
         row('🏔', 'Leaks', `An enemy that reaches the cave hits it once for ${BALANCE.night.leakMult}× its attack, then is gone.`),
         row('🔨', 'Wrecked roosts', `A wrecked roost stops blocking and releases no bats until dawn, when it is rebuilt at ${BALANCE.rebuildHpPct}% HP${d.charms.has('phoenix') ? ' (Phoenix Roost: full HP, one level lower)' : ''}.`),
-        row('🛡', 'Armour', `Bats from roosts at level ${BALANCE.roostLevel.armorLevel}+ take ${BALANCE.roostLevel.armorPct}% less damage.`),
+        row('🛡', 'Armour', `Damage taken × ${BALANCE.armor.K} / (${BALANCE.armor.K} + armour): 50 armour takes a third off, 100 halves it. Bats gain ${BALANCE.armor.perRoostLevel} armour per roost level above 1 (mega bats +${BALANCE.armor.mega}). Some enemies are armoured too (beetles, owls, the bosses).`),
         d.slots.some((s) => s.roost && !s.roost.nursery && BAT_BY_ID[s.roost.batId].clans.includes('SAN'))
           ? row('🩸', 'Vampire sharing', `At dawn, each vampire roost heals its neighbouring roosts ${BALANCE.adjacency.vampireDawnHealPct}%.`) : '',
       ].filter(Boolean)),

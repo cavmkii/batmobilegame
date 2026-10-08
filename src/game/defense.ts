@@ -2,7 +2,8 @@ import { BALANCE } from '../data/balance';
 import { BAT_BY_ID } from '../data/bats';
 import { CLANS, CLAN_ORDER } from '../data/clans';
 import { formationValue, type FormationId } from '../data/formations';
-import { MATRIARCH_BY_ID, matriarchGuano } from '../data/matriarchs';
+import { MATRIARCH_BY_ID } from '../data/matriarchs';
+import { treeEffects } from './matriarchTree';
 import type { BossRuleId } from '../data/bossRules';
 import { HUNT_PCT, type ObjectiveId } from '../data/saga';
 import { ENCOUNTERS, ENEMY_BY_ID, type Encounter } from '../data/enemies';
@@ -119,6 +120,8 @@ export interface Unit {
   mega: boolean;
   /** From a roost at the armour level: drawn armoured. */
   armored: boolean;
+  /** Damage taken × K / (K + armor). */
+  armor: number;
   dead: boolean;
   /** Last attack target position, for the renderer. */
   aimX: number;
@@ -190,7 +193,9 @@ export class Defense {
   }
   private mods = { extraNights: 0, guanoPerDawn: 0, wavePct: 0 };
   /** Flat passives from charms. */
-  private passive = { guanoPerDawn: 0, refreshDiscount: 0, startGuano: 0, speedPct: 0, hpPct: 0, atkPct: 0, startLevel: 0 };
+  private passive = { guanoPerDawn: 0, refreshDiscount: 0, startGuano: 0, speedPct: 0, hpPct: 0, atkPct: 0, startLevel: 0, armor: 0, roostHpPct: 0, hastePct: 0, interestCap: 0, poolSize: 0 };
+  /** Formation levels from the matriarch tree. */
+  private treeFormations: Partial<Record<FormationId, number>> = {};
   readonly charms: Set<string>;
   /** Glass card uids that shattered this level (removed from the run deck afterwards). */
   shattered: string[] = [];
@@ -207,7 +212,7 @@ export class Defense {
   /** Last dawn's interest, for the UI. */
   lastInterest = 0;
   /** The matriarch's rule, unpacked. */
-  readonly rule = { mergeRefund: 0, feedingRoost: false, mergeReach: 0, poolExtra: 0 };
+  readonly rule = { mergeRefund: 0, feedingRoost: false, mergeReach: 0, poolExtra: 0, feedingTop: 1 };
   /** Kills tonight by home slot (Feeding Roost). */
   private killsBy = new Map<number, number>();
 
@@ -240,19 +245,39 @@ export class Defense {
     else if (m?.kind === 'feedingRoost') this.rule.feedingRoost = true;
     else if (m?.kind === 'mergeReach') this.rule.mergeReach = m.levels;
     else if (m?.kind === 'poolSize') this.rule.poolExtra = m.extra;
+    // The matriarch's passive tree.
+    for (const e of treeEffects(cfg.matriarchId, cfg.roster[cfg.matriarchId])) {
+      switch (e.kind) {
+        case 'startGuano': this.passive.startGuano += e.n; break;
+        case 'perDawn': this.passive.guanoPerDawn += e.n; break;
+        case 'interestCap': this.passive.interestCap += e.n; break;
+        case 'refreshDiscount': this.passive.refreshDiscount += e.n; break;
+        case 'poolSize': this.passive.poolSize += e.n; break;
+        case 'roostHpPct': this.passive.roostHpPct += e.pct; break;
+        case 'hpPct': this.passive.hpPct += e.pct; break;
+        case 'atkPct': this.passive.atkPct += e.pct; break;
+        case 'hastePct': this.passive.hastePct += e.pct; break;
+        case 'speedPct': this.passive.speedPct += e.pct; break;
+        case 'armor': this.passive.armor += e.n; break;
+        case 'formation': this.treeFormations[e.id] = (this.treeFormations[e.id] ?? 0) + e.n; break;
+        case 'mergeRefund': this.rule.mergeRefund += e.n; break;
+        case 'mergeReach': this.rule.mergeReach += e.n; break;
+        case 'feedingRoost': this.rule.feedingTop += e.n; break;
+        case 'charmSlot': break; // applied to the run
+      }
+    }
 
     this.slots = this.makeSlots();
     this.plans = Array.from({ length: this.nights }, (_, i) => this.planNight(i + 1));
     this.drawPile = this.rng.shuffle(cfg.deck.filter((c) => c.kind === 'bat'));
     this.spellPile = this.rng.shuffle(cfg.deck.filter((c) => c.kind === 'spell'));
     this.drawSpells(BALANCE.spells.startHand);
-    const poolSize = E.poolSize + this.rule.poolExtra + (this.charms.has('deep_pockets') ? 1 : 0) - (cfg.bossRule === 'storm' ? 1 : 0);
+    const poolSize = E.poolSize + this.rule.poolExtra + this.passive.poolSize + (this.charms.has('deep_pockets') ? 1 : 0) - (cfg.bossRule === 'storm' ? 1 : 0);
     this.pool = Array.from({ length: Math.max(1, poolSize) }, () => null);
     if (cfg.objective === 'nursery') this.placeNursery();
     this.freeRerolls = this.charms.has('thrift') ? 1 : 0;
     this.fillPool();
-    const mo = cfg.roster[cfg.matriarchId];
-    this.guano = E.startGuano + this.passive.startGuano + (mo ? matriarchGuano(mo.level, mo.plus) : 0);
+    this.guano = E.startGuano + this.passive.startGuano;
   }
 
   // ---------------- Queries ----------------
@@ -271,7 +296,7 @@ export class Defense {
   }
 
   get interestCap(): number {
-    return BALANCE.interest.cap + (this.charms.has('hoard') ? 3 : 0);
+    return BALANCE.interest.cap + (this.charms.has('hoard') ? 3 : 0) + this.passive.interestCap;
   }
 
   /** What unspent guano would earn at dawn. */
@@ -376,7 +401,7 @@ export class Defense {
 
   /** A formation's level this run (star charts, Star Gazer, Star Map). */
   formationLevel(id: FormationId): number {
-    return (this.cfg.formationLevels?.[id] ?? 1) + (this.charms.has('star_gazer') ? 1 : 0);
+    return (this.cfg.formationLevels?.[id] ?? 1) + (this.charms.has('star_gazer') ? 1 : 0) + (this.treeFormations[id] ?? 0);
   }
 
   formationValue(id: FormationId): number {
@@ -713,7 +738,7 @@ export class Defense {
 
   private roostMaxHp(slot: Slot): number {
     const r = slot.roost!;
-    let hp = r.bp.roost.hp * (1 + (L.hpPct * (r.level - 1)) / 100) * (1 + this.passive.hpPct / 100);
+    let hp = r.bp.roost.hp * (1 + (L.hpPct * (r.level - 1)) / 100) * (1 + this.passive.hpPct / 100) * Math.max(0.1, 1 + this.passive.roostHpPct / 100);
     if (slot.terrain === 'fig' && this.terrainMatches(slot.idx, r.batId)) hp *= 1.5;
     return Math.round(hp);
   }
@@ -884,9 +909,10 @@ export class Defense {
     }
     // Feeding Roost: the night's best hunters level up.
     if (this.rule.feedingRoost && this.killsBy.size) {
-      const [idx] = [...this.killsBy].reduce((a, b) => (b[1] > a[1] ? b : a));
-      const slot = this.slots[idx];
-      if (slot.roost && !slot.roost.nursery) {
+      const best = [...this.killsBy].sort((a, b) => b[1] - a[1]).slice(0, this.rule.feedingTop);
+      for (const [idx] of best) {
+        const slot = this.slots[idx];
+        if (!slot.roost || slot.roost.nursery) continue;
         this.levelUp(slot, 1);
         this.floats.push({ x: slot.x, y: slot.y - 0.3, text: 'Feeding Roost!', color: '#ff8aa0', t: this.clock });
       }
@@ -957,7 +983,7 @@ export class Defense {
 
   private modsFor(slot: Slot): Mods {
     const r = slot.roost!;
-    const m: Mods = { atkPct: this.passive.atkPct, hastePct: 0, lifesteal: 0, auraMult: 1 };
+    const m: Mods = { atkPct: this.passive.atkPct, hastePct: this.passive.hastePct, lifesteal: 0, auraMult: 1 };
     if (r.glass.length) m.atkPct += this.charms.has('glazier') ? 120 : 60;
     const f = this.nightSlots.get(slot.idx);
     if (f?.has('pair')) m.atkPct += this.formationValue('pair');
@@ -976,7 +1002,7 @@ export class Defense {
     return { ...s, range: Math.max(U.minMelee, s.range / U.rangePerTile), speed };
   }
 
-  private addUnit(p: Pick<Unit, 'side' | 'defId' | 'x' | 'y' | 'stats' | 'traits' | 'mods' | 'home' | 'mega' | 'armored'>): Unit {
+  private addUnit(p: Pick<Unit, 'side' | 'defId' | 'x' | 'y' | 'stats' | 'traits' | 'mods' | 'home' | 'mega' | 'armored' | 'armor'>): Unit {
     const k = p.stats.knockbacks;
     const u: Unit = {
       id: this.nextId++,
@@ -998,6 +1024,12 @@ export class Defense {
   }
 
   /** A bat leaves a roost, with stats from the roost's level (or a level-10 mega bat). */
+  /** Armour for bats from this roost: base + per roost level (+ mega, charms). */
+  roostArmor(r: Roost): number {
+    const A = BALANCE.armor;
+    return (BAT_BY_ID[r.batId].armor ?? 0) + A.perRoostLevel * (r.level - 1) + (this.isMega(r) ? A.mega : 0) + this.passive.armor;
+  }
+
   private spawnBat(slot: Slot, x: number, y: number) {
     const r = slot.roost!;
     const bp = r.bp;
@@ -1014,7 +1046,7 @@ export class Defense {
     if (slot.terrain === 'fig' && this.terrainMatches(slot.idx, bp.batId)) hp *= 1.3;
     if (this.nightSlots.get(slot.idx)?.has('column')) hp *= 1 + this.formationValue('column') / 100;
     this.addUnit({
-      side: 'bat', defId: bp.batId, x, y, home: slot.idx, mods: this.modsFor(slot), mega, armored,
+      side: 'bat', defId: bp.batId, x, y, home: slot.idx, mods: this.modsFor(slot), mega, armored, armor: this.roostArmor(r),
       stats: this.toTiles({ ...bp.stats, hp: Math.round(hp), atk: Math.round(atk) }, 'bat'),
       traits: bp.traits,
     });
@@ -1023,7 +1055,7 @@ export class Defense {
   /** Summoned by spells: no home roost, level 1. */
   private spawnLooseBat(bp: UnitBlueprint, x: number, y: number) {
     this.addUnit({
-      side: 'bat', defId: bp.batId, x, y, home: null, mods: { ...NO_MODS, atkPct: this.passive.atkPct }, mega: false, armored: false,
+      side: 'bat', defId: bp.batId, x, y, home: null, mods: { ...NO_MODS, atkPct: this.passive.atkPct }, mega: false, armored: false, armor: (BAT_BY_ID[bp.batId].armor ?? 0) + this.passive.armor,
       stats: this.toTiles({ ...bp.stats, hp: Math.round(bp.stats.hp * (1 + this.passive.hpPct / 100)) }, 'bat'),
       traits: bp.traits,
     });
@@ -1034,7 +1066,7 @@ export class Defense {
     const def = ENEMY_BY_ID[id];
     const m = this.enemyMult;
     const s = { ...def.stats, hp: Math.round(def.stats.hp * m), atk: Math.round(def.stats.atk * m) };
-    this.addUnit({ side: 'enemy', defId: id, x, y: -0.3, stats: this.toTiles(s, 'enemy'), traits: def.traits, mods: NO_MODS, home: null, mega: false, armored: false });
+    this.addUnit({ side: 'enemy', defId: id, x, y: -0.3, stats: this.toTiles(s, 'enemy'), traits: def.traits, mods: NO_MODS, home: null, mega: false, armored: false, armor: def.armor ?? 0 });
   }
 
   private computeAuras(bats: Unit[]) {
@@ -1204,7 +1236,7 @@ export class Defense {
 
   private damage(t: Unit, amount: number): number {
     if (t.dead) return 0;
-    if (t.armored) amount *= 1 - L.armorPct / 100;
+    amount *= armorMult(t.armor);
     const dealt = Math.min(t.hp, amount);
     t.hp -= amount;
     this.floats.push({ x: t.x, y: t.y, text: `${Math.round(amount)}`, color: t.side === 'bat' ? '#ff7a7a' : '#ffffff', t: this.clock });
@@ -1319,5 +1351,7 @@ export class Defense {
 }
 
 const CLAN_COLOR: Record<string, string> = Object.fromEntries(CLAN_ORDER.map((c) => [c, CLANS[c].color]));
+/** Damage multiplier for an armour value: K / (K + armour). Negative armour is ignored. */
+export const armorMult = (armor: number) => BALANCE.armor.K / (BALANCE.armor.K + Math.max(0, armor));
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
