@@ -112,8 +112,8 @@ and it stops blocking its column. At dawn it's rebuilt at the same level with 50
 - Bats fly out, chase the nearest enemy, fight, and go home at dawn.
 - Enemies walk straight down their column. They attack bats within reach, then any roost
   blocking their column, then the cave.
-- Once an enemy is inside the roost zone with nothing left blocking its column, it rushes
-  the cave at 3× speed.
+- Enemies walk at one speed the whole way down, including through a column whose roosts
+  are wrecked.
 - **Leaks.** An enemy that reaches the cave hits once for 4× its attack, then is gone.
 
 **Commander.** The commander sits in the command zone and costs guano to place. It can't

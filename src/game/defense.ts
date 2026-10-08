@@ -808,9 +808,7 @@ export class Defense {
     const atCave = !bat && !roostSlot && F.caveY - u.y <= range;
 
     if (!bat && !roostSlot && !atCave) {
-      const blocked = this.slots.some((s) => s.roost && !s.roost.ruined && Math.abs(s.x - u.x) <= 0.5 && s.y > u.y);
-      const rushing = !blocked && u.y >= F.roostTopY - 0.5;
-      u.y += u.stats.speed * (rushing ? BALANCE.night.rushMult : 1) * dt;
+      u.y += u.stats.speed * dt;
       return;
     }
     if (u.atkTimer > 0) return;

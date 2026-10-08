@@ -318,7 +318,7 @@ describe('defense rules', () => {
     expect(d.phase).toBe('lost');
   });
 
-  it('enemies rush the cave once nothing blocks their column', () => {
+  it('enemies keep walking speed through the roost zone with nothing blocking', () => {
     const d = new Defense(cfg({ caveHp: 1e9, caveMax: 1e9 }));
     d.endDay();
     (d as unknown as { spawnEnemy(id: string, x: number): void }).spawnEnemy('beetle', 0.5);
@@ -326,7 +326,7 @@ describe('defense rules', () => {
     beetle.y = BALANCE.field.roostTopY;
     const y0 = beetle.y;
     d.step(0.5);
-    expect((beetle.y - y0) / 0.5).toBeCloseTo(beetle.stats.speed * BALANCE.night.rushMult, 1);
+    expect((beetle.y - y0) / 0.5).toBeCloseTo(beetle.stats.speed, 1);
   });
 });
 

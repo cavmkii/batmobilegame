@@ -19,10 +19,9 @@ export const BALANCE = {
    * Bats from roosts at armorLevel and up wear armour (visual).
    */
   roostLevel: { megaLevel: 10, armorLevel: 5, statPct: 25, hpPct: 20, batsPerLevel: 1, maxExtraBats: 4, megaHpMult: 3, megaAtkMult: 1.5, megaRespawnMult: 2 },
-  /** An enemy that reaches the cave hits once for atk × leakMult, then is gone (classic TD leak).
-   *  Inside the roost zone with nothing blocking its column, an enemy rushes at speed × rushMult. */
+  /** An enemy that reaches the cave hits once for atk × leakMult, then is gone (classic TD leak). */
   /** duskLead: seconds before the first enemy enters, so roosts can release their first bats. */
-  night: { maxSeconds: 80, duskLead: 5, groupGap: 3, spawnGap: 0.7, leakMult: 4, rushMult: 3, dawnDelay: 2 },
+  night: { maxSeconds: 80, duskLead: 5, groupGap: 3, spawnGap: 0.7, leakMult: 4, dawnDelay: 2 },
   /** A roost destroyed at night is rebuilt at dawn with this fraction of its max HP. */
   rebuildHpPct: 50,
   /** The commander instead returns to the command zone; each placement costs `tax` more than the last. */
