@@ -1,0 +1,15 @@
+<!doctype html><html><head><meta charset="utf-8"><style>body{background:#1c1626;color:#ddd;font:11px sans-serif;display:flex;flex-wrap:wrap;gap:8px;padding:10px}figure{margin:0;text-align:center;background:#2a2238;padding:6px;width:120px}canvas{image-rendering:pixelated}</style></head>
+<body><script type="module">
+import { BATS } from '../src/data/bats';
+import { batSprite } from '../src/render/pixel';
+const start = BATS.findIndex(b => b.id === 'tricolored');
+for (const b of BATS.slice(start)) {
+  const f = document.createElement('figure');
+  for (const look of [{}, { folded: true }]) {
+    const c = batSprite(b.id, 0, 1, look); const big = document.createElement('canvas'); big.width = c.width*2; big.height = c.height*2;
+    const g = big.getContext('2d'); g.imageSmoothingEnabled = false; g.drawImage(c, 0, 0, big.width, big.height); f.append(big);
+  }
+  f.append(Object.assign(document.createElement('figcaption'), { textContent: b.name }));
+  document.body.append(f);
+}
+</script></body></html>

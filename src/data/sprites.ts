@@ -127,6 +127,23 @@ export const BAT_HEADS: Record<string, string[]> = {
     '........',
     '........',
   ],
+  // Vesper bat (hoary, red, big brown…): short rounded ears, broad furry face.
+  vesper: [
+    '........',
+    '........',
+    '........',
+    '....oo..',
+    '...obbo.',
+    '...obbbo',
+    '...obebb',
+    '...obbbb',
+    '....obBn',
+    '.....obB',
+    '......oo',
+    '........',
+    '........',
+    '........',
+  ],
   // Fledgling: oversized head and eyes.
   fledgling: [
     '........',

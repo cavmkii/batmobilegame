@@ -1,4 +1,5 @@
 import { BALANCE } from '../data/balance';
+import { BIOMES, BIOME_BY_ID, MODIFIER_BY_ID, rewardBonusPct } from '../data/setup';
 import { BAT_BY_ID } from '../data/bats';
 import { RELICS } from '../data/relics';
 import { SPELL_BY_ID } from '../data/spells';
@@ -24,6 +25,10 @@ export interface ShopState {
 export interface RunState {
   rngState: number;
   commanderId: string;
+  /** Map choice (biome id). Older saves may lack it. */
+  biome?: string;
+  /** Modifier ids chosen on the Play screen. */
+  modifiers?: string[];
   deck: Card[];
   relics: string[];
   caveHp: number;
@@ -49,18 +54,31 @@ export interface RunState {
 export const runRng = (run: RunState) => new Rng(run.rngState);
 const saveRng = (run: RunState, rng: Rng) => (run.rngState = rng.state);
 
-export function startRun(p: Profile, commanderId: string, core: string[], seed: number): RunState {
+export interface RunSetup {
+  biome?: string;
+  modifiers?: string[];
+}
+
+export function startRun(p: Profile, commanderId: string, core: string[], seed: number, setup: RunSetup = {}): RunState {
   const err = validateCore(p, commanderId, core);
   if (err) throw new Error(err);
   const rng = new Rng(seed);
   const map = generateMap(rng);
+  const modifiers = (setup.modifiers ?? []).filter((id) => MODIFIER_BY_ID[id]);
+  let cave = BALANCE.run.caveHp;
+  for (const id of modifiers) {
+    const e = MODIFIER_BY_ID[id].effect;
+    if (e.kind === 'caveHp') cave = Math.round(cave * (1 + e.pct / 100));
+  }
   const run: RunState = {
     rngState: rng.state,
     commanderId,
+    biome: BIOME_BY_ID[setup.biome ?? ''] ? setup.biome! : BIOMES[0].id,
+    modifiers,
     deck: buildStartingDeck(core),
     relics: [],
-    caveHp: BALANCE.run.caveHp,
-    caveMax: BALANCE.run.caveHp,
+    caveHp: cave,
+    caveMax: cave,
     figs: 0,
     map,
     currentNode: null,
@@ -76,6 +94,7 @@ export function startRun(p: Profile, commanderId: string, core: string[], seed: 
   };
   p.cores[commanderId] = [...core];
   p.lastCommander = commanderId;
+  p.lastSetup = { biome: run.biome!, modifiers: [...modifiers] };
   p.stats.runs++;
   return run;
 }
@@ -330,7 +349,7 @@ export function cardName(c: Pick<Card, 'kind' | 'id' | 'upgraded'>): string {
 /** Bank the run's rewards into the profile and close the run. */
 export function finishRun(p: Profile, run: RunState): { xp: number; glow: number; cleared: boolean } {
   const cleared = run.status === 'won';
-  const mult = cleared ? BALANCE.rewards.clearBonusMult : 1;
+  const mult = (cleared ? BALANCE.rewards.clearBonusMult : 1) * (1 + rewardBonusPct(run.modifiers ?? []) / 100);
   const xp = Math.round(run.xpEarned * mult);
   const glow = Math.round(run.glowEarned * mult);
   p.xp += xp;

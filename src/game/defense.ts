@@ -3,7 +3,8 @@ import { BAT_BY_ID } from '../data/bats';
 import { ENCOUNTERS, ENEMY_BY_ID, type Encounter } from '../data/enemies';
 import { RELIC_BY_ID } from '../data/relics';
 import { SPELL_BY_ID } from '../data/spells';
-import { TERRAIN, TERRAIN_IDS } from '../data/terrain';
+import { BIOMES, BIOME_BY_ID, MODIFIER_BY_ID } from '../data/setup';
+import { TERRAIN } from '../data/terrain';
 import type { Card, SpellEffect, Stats, TerrainId, Trait } from '../data/types';
 import { blueprint, type OwnedBat, type UnitBlueprint } from './progression';
 import { Rng } from './rng';
@@ -23,6 +24,10 @@ export interface DefenseConfig {
   caveHp: number;
   caveMax: number;
   seed: number;
+  /** Biome id: weights which terrain tiles appear. */
+  biome?: string;
+  /** Run modifier ids. */
+  modifiers?: string[];
 }
 
 export interface Roost {
@@ -141,13 +146,27 @@ export class Defense {
   private nextId = 1;
   private spawnQueue: { at: number; enemy: string; x: number }[] = [];
   private enemyMult: number;
+  /** New Moon modifier: tonight's wave isn't shown by day. */
+  previewHidden = false;
+  get biome(): string {
+    return this.cfg.biome ?? BIOMES[0].id;
+  }
+  private mods = { extraNights: 0, guanoPerDawn: 0, wavePct: 0 };
   private relic = { guanoPerDawn: 0, refreshDiscount: 0, startGuano: 0, speedPct: 0, hpPct: 0, atkPct: 0, startLevel: 0 };
 
   constructor(private cfg: DefenseConfig) {
     const enc = ENCOUNTERS.find((e) => e.id === cfg.encounterId);
     if (!enc) throw new Error(`Unknown encounter ${cfg.encounterId}`);
     this.encounter = enc;
-    this.nights = enc.nights;
+    for (const id of cfg.modifiers ?? []) {
+      const e = MODIFIER_BY_ID[id]?.effect;
+      if (!e) continue;
+      if (e.kind === 'extraNights') this.mods.extraNights += e.amount;
+      else if (e.kind === 'guanoPerDawn') this.mods.guanoPerDawn += e.amount;
+      else if (e.kind === 'waveSize') this.mods.wavePct += e.pct;
+      else if (e.kind === 'hidePreview') this.previewHidden = true;
+    }
+    this.nights = enc.nights + this.mods.extraNights;
     this.rng = new Rng(cfg.seed);
     this.enemyMult = 1 + BALANCE.enemyRowScaling * cfg.row;
     this.cave = { hp: cfg.caveHp, max: cfg.caveMax };
@@ -412,8 +431,14 @@ export class Defense {
         slots.push({ idx: slots.length, col, row, x: col + 0.5, y: F.roostTopY + row + 0.5, terrain: null, roost: null });
       }
     }
-    // 3–4 terrain tiles, never two of the same type.
-    const types = this.rng.shuffle([...TERRAIN_IDS]).slice(0, this.rng.int(3, 4));
+    // 3–4 terrain tiles, never two of the same type, weighted by the biome.
+    const weights: Record<string, number> = { ...(BIOME_BY_ID[this.cfg.biome ?? '']?.terrain ?? BIOMES[0].terrain) };
+    const types: TerrainId[] = [];
+    for (let k = this.rng.int(3, 4); k > 0 && Object.values(weights).some((w) => w > 0); k--) {
+      const t = this.rng.weighted(weights) as TerrainId;
+      types.push(t);
+      weights[t] = 0;
+    }
     const spots = this.rng.shuffle([...slots]);
     types.forEach((t, i) => (spots[i].terrain = t));
     return slots;
@@ -421,9 +446,9 @@ export class Defense {
 
   private planNight(n: number): NightGroup[] {
     const enc = this.encounter;
-    let budget = enc.budget.first + enc.budget.perNight * (n - 1);
+    let budget = (enc.budget.first + enc.budget.perNight * (n - 1)) * (1 + this.mods.wavePct / 100);
     const groups: NightGroup[] = [];
-    if (n === enc.nights && enc.finale) {
+    if (n === this.nights && enc.finale) {
       for (const id of enc.finale) groups.push({ enemy: id, count: 1, col: this.rng.int(1, 3) });
     }
     const pool = enc.pool.filter((p) => (p.minNight ?? 1) <= n);
@@ -531,7 +556,7 @@ export class Defense {
 
   /** What tomorrow's dawn would pay if no roost were wrecked tonight (kills not included). */
   projectedIncome(): number {
-    return E.perDawn + Math.floor(this.housedBats() / E.batsPerGuano) + this.relic.guanoPerDawn;
+    return Math.max(0, E.perDawn + this.mods.guanoPerDawn) + Math.floor(this.housedBats() / E.batsPerGuano) + this.relic.guanoPerDawn;
   }
 
   private dawn() {
@@ -561,7 +586,7 @@ export class Defense {
       return;
     }
     this.lastIncomeParts = {
-      base: E.perDawn,
+      base: Math.max(0, E.perDawn + this.mods.guanoPerDawn),
       roosts: wreckedIncome,
       kills: Math.floor(this.kills / E.killsPerGuano),
       relic: this.relic.guanoPerDawn,

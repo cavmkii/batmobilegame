@@ -176,6 +176,63 @@ feed; that's where the Sanguivore heal-on-death mechanic comes from.
 Starter commanders: **Great Flying Fox** (Frugivore/Nectarivore), **Ghost Bat**
 (Sanguivore/Insectivore), **Spectral Bat** (Piscivore/Sanguivore).
 
+## 4b. The field guide (collection)
+
+36 species: 35 collectable plus the basic Fledgling. Each has a real scientific name, a
+region, a fact, and a conservation note where the status is notable and well established
+(Indiana bat, northern long-eared, greater long-nosed, tricolored, little brown, ghost bat).
+
+| Region | Species |
+|---|---|
+| 🌲 North America | little brown, big brown, eastern red, hoary, tricolored, northern long-eared, Indiana, Townsend's big-eared, pallid, Mexican free-tailed, lesser and greater long-nosed, Mexican long-tongued |
+| 🌴 Latin America | the three vampire bats, lesser and greater bulldog, Mexican fishing bat, Pallas's long-tongued, tube-lipped nectar, Jamaican fruit, Seba's short-tailed, Geoffroy's tailless, spectral (commander) |
+| 🌍 Africa | Egyptian fruit, straw-colored fruit, hammer-headed, Wahlberg's epauletted |
+| 🏔 Eurasia | brown long-eared, Daubenton's, Rickett's big-footed, greater noctule (commander) |
+| 🌏 Asia-Pacific | great flying fox, ghost bat (both commanders) |
+
+- **Sanguivores stay at three.** Only three blood-feeding bat species exist, and the game
+  has all of them. I'm not inventing more.
+- **Greater Noctule** is a fourth commander (Insectivore/Piscivore), available only from
+  legendary summons. It gives the new insect-eaters and water bats a commander that can
+  draft both.
+- **Rewards:** milestones at 10, 15, 20, 25 and 30 species and the complete guide, plus a
+  set reward for completing each region. They pay Glowbugs (more summons) and XP, so
+  collecting feeds back into collecting and levelling.
+- **The guide** can be sorted by clan or by region. Unfound species show as silhouettes
+  with their region and rarity.
+- The starter gift is fixed at one common per clan, so adding commons doesn't change it.
+
+## 4c. Main menu and Play screen
+
+- **Main menu:** Play, Field Guides, Summon. More will come later.
+- **Play:** choose the commander and deck core, then the map and any modifiers.
+  - **Maps (biomes)** change which terrain tiles appear, and so which clans thrive:
+
+    | Map | Favours |
+    |---|---|
+    | Cave Country | everything |
+    | Sonoran Desert | cactus, so nectar bats |
+    | Lowland Rainforest | fig and pond, so fruit and fishing bats |
+    | Farmland | pen and lamp, so vampires and insect-eaters |
+
+  - **Modifiers** are optional. Each makes the run harder and adds a reward bonus (XP and
+    Glowbugs at the end of the run):
+
+    | Modifier | Effect | Bonus |
+    |---|---|---|
+    | Lean Times | −1 guano each dawn | +25% |
+    | Long Nights | +2 nights per level | +20% |
+    | New Moon | no enemy preview | +30% |
+    | Swarm Season | waves +25% | +30% |
+    | Crumbling Cave | −30% cave HP | +20% |
+
+  - The last choices are remembered for next time.
+- **Field Guides:** a shelf of books.
+  - *Bats of the World* is the collection, with milestones and region sets.
+  - *Predators & Prey* unlocks an entry, with a fact, the first time a creature appears in
+    a night.
+  - Unfound entries are blacked out as ???.
+
 ## 5. Run structure (unchanged from v0.1; battle nodes are now defense levels)
 
 - One act (designed for three later): 8 rows of nodes, branching paths.

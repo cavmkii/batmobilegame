@@ -39,7 +39,16 @@ registerScreen('battle', (app) => {
     caveHp: r.caveHp,
     caveMax: r.caveMax,
     seed: (r.rngState ^ hash(node.id)) >>> 0,
+    biome: r.biome,
+    modifiers: r.modifiers,
   });
+  // Field guide: enemies count as met once their night begins.
+  const meet = () => {
+    const seen = new Set(app.profile.seenEnemies);
+    let changed = false;
+    for (const g of d.tonight) if (!seen.has(g.enemy)) { app.profile.seenEnemies.push(g.enemy); seen.add(g.enemy); changed = true; }
+    if (changed) app.save();
+  };
   // Exposed in dev builds so automated playtests can drive the level.
   if (import.meta.env.DEV) (window as unknown as { __defense: Defense }).__defense = d;
 
@@ -79,7 +88,7 @@ registerScreen('battle', (app) => {
   const guano = h('div.guano');
   const piles = h('span.small.muted');
   const refreshBtn = h('button.refresh', { onclick: () => { if (d.refresh()) { sel = null; note = 'New cards in the pool.'; } } });
-  const endBtn = h('button.primary.end-day', { onclick: () => { sel = null; note = ''; d.endDay(); } }, 'End day ☾');
+  const endBtn = h('button.primary.end-day', { onclick: () => { sel = null; note = ''; meet(); d.endDay(); } }, 'End day ☾');
   const speedBtn = h('button.ghost.small', { onclick: () => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; speedBtn.textContent = `${speed}×`; } }, '1×');
   const cards = h('div.hand-row');
   const overlay = h('div.battle-overlay');
@@ -291,8 +300,8 @@ registerScreen('battle', (app) => {
     if (!text) {
       text = isDay
         ? d.day === 1
-          ? `Tonight's enemies are shown at the top. Start with your commander (gold card), placed in a column they'll come down. Two roosts of the same bat and level merge into one a level higher: tap one, then the other. ↻ rerolls the pool for ${d.refreshCost} guano.`
-          : `Dawn: +${d.lastIncome} guano (${d.lastIncomeParts.base} base, ${d.lastIncomeParts.roosts} from roosts, ${d.lastIncomeParts.kills} from kills${d.lastIncomeParts.relic ? `, ${d.lastIncomeParts.relic} relic` : ''}). Tonight: ${tonightSummary(d)}.`
+          ? `${d.previewHidden ? 'New Moon: you won\'t see tonight\'s enemies in advance.' : 'Tonight\'s enemies are shown at the top.'} Start with your commander (gold card), placed in a column they'll come down. Two roosts of the same bat and level merge into one a level higher: tap one, then the other. ↻ rerolls the pool for ${d.refreshCost} guano.`
+          : d.previewHidden ? `Dawn: +${d.lastIncome} guano. New Moon: tonight's enemies are hidden.` : `Dawn: +${d.lastIncome} guano (${d.lastIncomeParts.base} base, ${d.lastIncomeParts.roosts} from roosts, ${d.lastIncomeParts.kills} from kills${d.lastIncomeParts.relic ? `, ${d.lastIncomeParts.relic} relic` : ''}). Tonight: ${tonightSummary(d)}.`
         : 'Bats fly out on their own. Spells are instants: tap one twice to cast.';
     }
     info.textContent = text;
