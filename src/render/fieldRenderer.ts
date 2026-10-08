@@ -1,6 +1,7 @@
 import { BALANCE } from '../data/balance';
 import { BAT_BY_ID } from '../data/bats';
 import { CLANS } from '../data/clans';
+import { BIOME_BY_ID } from '../data/setup';
 import { TERRAIN } from '../data/terrain';
 import type { Defense } from '../game/defense';
 import { Rng } from '../game/rng';
@@ -34,7 +35,7 @@ export class FieldRenderer {
     canvas.height = VIEW_H;
     this.g = canvas.getContext('2d')!;
     this.g.imageSmoothingEnabled = false;
-    this.bg = makeBackground();
+    this.bg = makeBackground(BIOME_BY_ID[d.biome]?.tint ?? '#14201a');
   }
 
   /** Canvas pixel → roost slot index, or -1. */
@@ -57,7 +58,7 @@ export class FieldRenderer {
     if (d.phase === 'day') this.drawDaylight();
 
     this.drawSlots(hl);
-    if (d.phase === 'day') this.drawPreview();
+    if (d.phase === 'day' && !d.previewHidden) this.drawPreview();
     this.drawCave();
 
     const units = [...d.units].sort((a, b) => a.y - b.y);
@@ -349,7 +350,7 @@ export class FieldRenderer {
   }
 }
 
-function makeBackground(): HTMLCanvasElement {
+function makeBackground(ground: string): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = VIEW_W;
   c.height = VIEW_H;
@@ -357,7 +358,7 @@ function makeBackground(): HTMLCanvasElement {
   const sky = g.createLinearGradient(0, 0, 0, VIEW_H);
   sky.addColorStop(0, '#0d0a1e');
   sky.addColorStop(0.55, '#1c1634');
-  sky.addColorStop(1, '#14201a');
+  sky.addColorStop(1, ground);
   g.fillStyle = sky;
   g.fillRect(0, 0, VIEW_W, VIEW_H);
   const rng = new Rng(42);

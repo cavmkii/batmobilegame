@@ -11,6 +11,9 @@ import { Rng, newSeed } from '../game/rng';
 import { startRun } from '../game/run';
 import { COLLECTABLE, MILESTONES, REGION, REGION_ICON, REGION_SETS, REGIONS, STATUS, regionMembers, type Reward } from '../data/fieldguide';
 import { claim, claimable, ownedSet } from '../game/collection';
+import { ENEMIES } from '../data/enemies';
+import { BIOMES, MODIFIERS, rewardBonusPct } from '../data/setup';
+import { enemyImageUrl } from '../render/pixel';
 import { registerScreen, type App } from './app';
 import { batImg, clanPips, currencyBar, fmt, header, patternGrid } from './components';
 import { h, toast } from './dom';
@@ -51,9 +54,14 @@ registerScreen('home', (app) => {
   return h('div.screen',
     h('div.hero', h('h1.title', 'BATMOBILE'), wallet(app)),
     h('div.menu',
-      h('button.big.primary', { onclick: () => app.go({ name: p.run ? 'map' : 'prep' }) }, p.run ? 'Continue run' : 'Start a run'),
-      h('button.big', { onclick: () => app.go({ name: 'roster' }) }, `Field Guide  ${owned}/${total}`, claimable(p).length ? h('span.badge', claimable(p).length) : null),
-      h('button.big', { onclick: () => app.go({ name: 'summon' }) }, 'Summon', p.pendingDupes.length ? h('span.badge', p.pendingDupes.length) : null),
+      h('button.big.primary.main-btn', { onclick: () => app.go({ name: p.run ? 'map' : 'prep' }) },
+        h('span.mb-icon', '▶'), h('span', p.run ? 'Continue run' : 'Play'), h('span.mb-sub', p.run ? 'A run is in progress' : 'Choose commander, deck, map and modifiers')),
+      h('button.big.main-btn', { onclick: () => app.go({ name: 'guides' }) },
+        h('span.mb-icon', '📖'), h('span', 'Field Guides'), h('span.mb-sub', `Bats ${owned}/${total}`),
+        claimable(p).length ? h('span.badge', claimable(p).length) : null),
+      h('button.big.main-btn', { onclick: () => app.go({ name: 'summon' }) },
+        h('span.mb-icon', '🦇'), h('span', 'Summon'), h('span.mb-sub', `🪲 ${fmt(p.glow)}`),
+        p.pendingDupes.length ? h('span.badge', p.pendingDupes.length) : null),
     ),
     h('div.stats.muted', `Runs ${p.stats.runs} · Clears ${p.stats.clears} · Best depth ${p.stats.bestRow}/${BALANCE.run.rows} · Pulls ${p.stats.pulls}`),
     h('button.ghost.small', {
@@ -113,7 +121,7 @@ registerScreen('roster', (app) => {
     : REGIONS.map((r, i) => ({ title: `${REGION_ICON[r]} ${r}`, color: 'var(--text)', ids: regionMembers(r), set: REGION_SETS[i] as Reward | null }));
 
   return h('div.screen',
-    header('Field Guide', () => app.go({ name: 'home' }), wallet(app)),
+    header('Bats of the World', () => app.go({ name: 'guides' }), wallet(app)),
     h('div.guide-summary',
       h('div.guide-count', h('b', `${found}`), ` / ${COLLECTABLE.length} species`, h('span.muted', ` · ${pct}%`)),
       h('div.hpbar', h('div', { style: `width:${pct}%` })),
@@ -130,6 +138,53 @@ registerScreen('roster', (app) => {
       h('div.roster-grid', ...g.ids.map((id) => cell(BAT_BY_ID[id]))),
     )),
     h('section', h('h2', 'Milestones'), ...MILESTONES.map(rewardRow)),
+  );
+});
+
+// ---------------- Field guides shelf ----------------
+
+registerScreen('guides', (app) => {
+  const p = app.profile;
+  const owned = ownedSet(p);
+  const bats = COLLECTABLE.filter((id) => owned.has(id)).length;
+  const preds = ENEMIES.filter((e) => p.seenEnemies.includes(e.id)).length;
+  const book = (title: string, sub: string, color: string, icon: string, go?: () => void, badge = 0) =>
+    h(`button.book${go ? '' : '.locked'}`, { style: `--book:${color}`, onclick: go ?? (() => toast('More field guides are coming.')) },
+      h('div.book-spine'), h('div.book-icon', icon), h('div.book-title', title), h('div.small.muted', sub),
+      badge ? h('span.badge', badge) : null);
+  return h('div.screen',
+    header('Field Guides', () => app.go({ name: 'home' }), wallet(app)),
+    h('p.muted.small.center', 'Entries fill in as you find species. Unfound entries stay blacked out.'),
+    h('div.shelf',
+      book('Bats of the World', `${bats} / ${COLLECTABLE.length} species`, '#6a3a8a', '🦇', () => app.go({ name: 'roster' }), claimable(p).length),
+      book('Predators & Prey', `${preds} / ${ENEMIES.length} entries`, '#8a4a2a', '🦉', () => app.go({ name: 'bestiary' })),
+      book('???', 'Coming soon', '#3a3a4a', '🔒'),
+    ),
+  );
+});
+
+registerScreen('bestiary', (app) => {
+  const p = app.profile;
+  const seen = new Set(p.seenEnemies);
+  const found = ENEMIES.filter((e) => seen.has(e.id)).length;
+  return h('div.screen',
+    header('Predators & Prey', () => app.go({ name: 'guides' }), wallet(app)),
+    h('div.guide-summary',
+      h('div.guide-count', h('b', `${found}`), ` / ${ENEMIES.length} entries`),
+      h('div.small.muted', 'Entries unlock when the creature first appears in a night.'),
+    ),
+    ...ENEMIES.map((e) => {
+      const known = seen.has(e.id);
+      return h(`div.entry${known ? '' : '.unknown'}`,
+        h('img.pixel', { src: enemyImageUrl(e.id, 2), alt: known ? e.name : 'Unknown' }),
+        known
+          ? h('div', h('b', e.name),
+            h('div.small.muted', `❤ ${e.stats.hp} · ⚔ ${e.stats.atk} · ${e.stats.range >= 100 ? 'ranged' : 'melee'} · ${e.stats.speed >= 60 ? 'fast' : e.stats.speed <= 25 ? 'slow' : 'steady'}`),
+            e.traits.length ? h('div.small', e.traits.map(describeTrait).join(' · ')) : null,
+            h('p.fact', e.fact))
+          : h('div', h('b', '???'), h('div.small.muted', 'Not yet encountered.')),
+      );
+    }),
   );
 });
 
@@ -249,6 +304,8 @@ registerScreen('prep', (app) => {
   const commanders = Object.keys(p.roster).filter((id) => BAT_BY_ID[id].commander);
   let cmd = p.lastCommander && p.roster[p.lastCommander] ? p.lastCommander : commanders[0];
   let core: string[] = [];
+  let biome = p.lastSetup?.biome ?? BIOMES[0].id;
+  let mods: string[] = [...(p.lastSetup?.modifiers ?? [])];
 
   const body = h('div');
   const draw = () => {
@@ -268,7 +325,7 @@ registerScreen('prep', (app) => {
       }, batImg(id, 2), h('div.small', displayName(BAT_BY_ID[id], p.roster[id])), clanPips(BAT_BY_ID[id].clans)))),
       h('p.muted.small', 'Identity: ', identityOf(cmd).map((c) => CLANS[c].name).join(' + '),
         '. Only bats and spells within this identity (or colorless) can join the deck.'),
-      h('h2', `Core  ${core.length}/${BALANCE.run.coreMax}`),
+      h('h2', `Deck: core ${core.length}/${BALANCE.run.coreMax}`),
       legal.length ? h('div.core-grid', ...legal.map((id) => {
         const on = core.includes(id);
         const o = p.roster[id];
@@ -283,17 +340,29 @@ registerScreen('prep', (app) => {
         }, batImg(id, 2), h('div.small', displayName(BAT_BY_ID[id], o)), h('div.muted.small', `Lv ${o.level}${o.plus ? `+${o.plus}` : ''}`), clanPips(BAT_BY_ID[id].clans));
       })) : h('p.muted', 'No owned bats match this identity yet. Summon more, or start with Fledglings.'),
       h('p.muted.small', `Starting deck: ${core.length} core + ${fledglings} Fledgling${fledglings === 1 ? '' : 's'}. Draft up to ${BALANCE.run.deckCap} cards during the run.`),
+      h('h2', 'Map'),
+      h('div.choice-list', ...BIOMES.map((b) => h(`button.choice${b.id === biome ? '.selected' : ''}`, {
+        onclick: () => { biome = b.id; render(); },
+      }, h('span.choice-icon', b.icon), h('div', h('b', b.name), h('div.small.muted', b.desc))))),
+      h('h2', 'Modifiers'),
+      h('p.muted.small', 'Optional. Each one makes the run harder and adds to its rewards.'),
+      h('div.choice-list', ...MODIFIERS.map((m) => {
+        const on = mods.includes(m.id);
+        return h(`button.choice${on ? '.selected' : ''}`, {
+          onclick: () => { mods = on ? mods.filter((x) => x !== m.id) : [...mods, m.id]; render(); },
+        }, h('span.choice-icon', m.icon), h('div', h('b', m.name), h('div.small.muted', m.desc)), h('span.tag', `+${m.bonusPct}%`));
+      })),
       err ? h('p.error', err) : '',
       h('button.big.primary', {
         disabled: !!err,
         onclick: () => {
-          p.run = startRun(p, cmd, core, newSeed());
+          p.run = startRun(p, cmd, core, newSeed(), { biome, modifiers: mods });
           app.save();
           app.go({ name: 'map' });
         },
-      }, 'Begin run'),
+      }, 'Begin run', rewardBonusPct(mods) ? h('div.small', `Rewards +${rewardBonusPct(mods)}%`) : null),
     );
   };
   draw();
-  return h('div.screen', header('Prepare', () => app.go({ name: 'home' })), body);
+  return h('div.screen', header('Play', () => app.go({ name: 'home' })), body);
 });

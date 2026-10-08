@@ -59,3 +59,46 @@ describe('collection rewards', () => {
     expect(claimable(p).some((r) => r.id === REGION_SETS[africa].id)).toBe(true);
   });
 });
+
+describe('run setup: maps and modifiers', () => {
+  const base = (over: Partial<import('../src/game/defense').DefenseConfig> = {}) => ({
+    encounterId: 'moth_cloud', row: 0, deck: [], commanderId: 'ghost_bat',
+    roster: { ghost_bat: newOwnedBat() }, relics: [], caveHp: 1000, caveMax: 1000, seed: 1, ...over,
+  });
+
+  it('weights terrain by biome', async () => {
+    const { Defense } = await import('../src/game/defense');
+    const tally = (biome: string) => {
+      const c: Record<string, number> = {};
+      for (let s = 0; s < 200; s++) for (const sl of new Defense(base({ biome, seed: s })).slots) if (sl.terrain) c[sl.terrain] = (c[sl.terrain] ?? 0) + 1;
+      return c;
+    };
+    const rain = tally('rainforest');
+    const desert = tally('sonoran');
+    expect(rain.fig).toBeGreaterThan(desert.fig ?? 0);
+    expect(desert.cactus).toBeGreaterThan(rain.cactus ?? 0);
+  });
+
+  it('applies modifiers to the level and the run', async () => {
+    const { Defense } = await import('../src/game/defense');
+    const { startRun, finishRun } = await import('../src/game/run');
+    const plain = new Defense(base());
+    const long = new Defense(base({ modifiers: ['long_nights', 'new_moon'] }));
+    expect(long.nights).toBe(plain.nights + 2);
+    expect(long.previewHidden).toBe(true);
+    expect(long.plans.length).toBe(long.nights);
+    const lean = new Defense(base({ modifiers: ['lean_times'] }));
+    expect(lean.projectedIncome()).toBe(plain.projectedIncome() - 1);
+
+    const p = newProfile();
+    chooseStarter(p, 'ghost_bat');
+    const run = startRun(p, 'ghost_bat', [], 5, { biome: 'farmland', modifiers: ['old_cave', 'swarm_season'] });
+    expect(run.biome).toBe('farmland');
+    expect(run.caveMax).toBe(700);
+    expect(p.lastSetup).toEqual({ biome: 'farmland', modifiers: ['old_cave', 'swarm_season'] });
+    run.xpEarned = 1000;
+    run.status = 'lost';
+    const res = finishRun(p, run);
+    expect(res.xp).toBe(1500); // +20% +30%
+  });
+});

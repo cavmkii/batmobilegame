@@ -14,6 +14,10 @@ export interface Profile {
   /** Saved core per commander, so the deck screen remembers your picks. */
   cores: Record<string, string[]>;
   lastCommander?: string;
+  /** Last Play-screen choices, remembered for next time. */
+  lastSetup?: { biome: string; modifiers: string[] };
+  /** Enemy ids met in a level (unlocks entries in the Predators field guide). */
+  seenEnemies: string[];
   /** Duplicates pulled but not yet resolved (plus-level vs XP). */
   pendingDupes: string[];
   /** Field-guide rewards already claimed (milestones and region sets). */
@@ -35,6 +39,7 @@ export function newProfile(): Profile {
     cores: {},
     pendingDupes: [],
     claimed: [],
+    seenEnemies: [],
     stats: { runs: 0, clears: 0, pulls: 0, bestRow: 0 },
   };
 }
@@ -56,6 +61,7 @@ export function loadProfile(): Profile {
     for (const id of Object.keys(p.roster)) if (!BAT_BY_ID[id]) delete p.roster[id];
     p.pendingDupes = (p.pendingDupes ?? []).filter((id) => BAT_BY_ID[id]);
     p.claimed ??= [];
+    p.seenEnemies ??= [];
     // Relics can be renamed or removed between versions.
     if (p.run) p.run.relics = p.run.relics.filter((id) => RELIC_BY_ID[id]);
     return p;

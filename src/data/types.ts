@@ -122,6 +122,8 @@ export interface EnemyDef {
   size: number;
   /** Cost against a night's wave budget. */
   threat: number;
+  /** Field-guide entry. */
+  fact: string;
 }
 
 export interface RelicDef {

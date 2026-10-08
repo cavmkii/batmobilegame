@@ -1,4 +1,5 @@
 import { BALANCE } from '../data/balance';
+import { BIOME_BY_ID, MODIFIER_BY_ID, rewardBonusPct } from '../data/setup';
 import { BAT_BY_ID } from '../data/bats';
 import { ENCOUNTERS } from '../data/enemies';
 import type { Card } from '../data/types';
@@ -86,8 +87,9 @@ registerScreen('map', (app) => {
   });
   const cmd = BAT_BY_ID[r.commanderId];
   return h('div.screen',
-    header('Night Flight', () => app.go({ name: 'home' }), h('button.ghost', { onclick: () => app.go({ name: 'deck' }) }, `Deck ${r.deck.length}`)),
+    header(`${BIOME_BY_ID[r.biome ?? '']?.icon ?? ''} ${BIOME_BY_ID[r.biome ?? '']?.name ?? 'Night Flight'}`, () => app.go({ name: 'home' }), h('button.ghost', { onclick: () => app.go({ name: 'deck' }) }, `Deck ${r.deck.length}`)),
     runHud(app),
+    r.modifiers?.length ? h('div.mod-chips', ...r.modifiers.map((id) => h('span.tag', { title: MODIFIER_BY_ID[id]?.desc }, `${MODIFIER_BY_ID[id]?.icon} ${MODIFIER_BY_ID[id]?.name}`)), h('span.small.muted', ` rewards +${rewardBonusPct(r.modifiers)}%`)) : null,
     h('div.map-cmd', batImg(cmd.id, 1), h('span.small', cmd.name), clanPips(cmd.clans)),
     h('div.map', { style: `height:${H}px` }, svg, ...nodes),
     h('div.legend.small.muted', ...Object.entries(NODE_ICON).map(([k, v]) => h('span', `${v} ${k}`))),

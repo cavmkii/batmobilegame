@@ -4,7 +4,9 @@ import { clear } from './dom';
 export type Screen =
   | { name: 'starter' }
   | { name: 'home' }
+  | { name: 'guides' }
   | { name: 'roster' }
+  | { name: 'bestiary' }
   | { name: 'bat'; id: string }
   | { name: 'summon' }
   | { name: 'prep' }
