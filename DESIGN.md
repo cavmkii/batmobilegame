@@ -37,11 +37,15 @@ over its length**. Roosts never expire; they grow.
   Elite and boss levels add a fixed finale enemy.
 
 **Guano: the one currency inside a level.** (Bat guano really was mined and sold as
-fertilizer.)
-- You start each level with 6. Each dawn adds +5, plus 1 for every 4 kills.
-- It pays for placing bats (the card's cost), refreshing the pool (2), and casting spells.
-- Unspent guano carries over, so every day you choose between building, rerolling and
-  saving.
+fertilizer, and it piles up under roosts.)
+- You start each level with 6. Dawn pays **+2 base, +1 per 2 bats housed in your
+  standing roosts, and +1 per 4 kills**. A roost wrecked that night produces nothing.
+- So the roosts are the economy. The first days are a grind (+3–4 a dawn). Guano spent
+  on bats raises future income, while rerolls and spells don't. In bot runs income
+  climbs from about 4 to 12–16 per dawn by the last nights.
+- It pays for placing bats (the card's cost), refreshing the pool (2), and casting
+  spells. Unspent guano carries over. The HUD shows tomorrow's projected income, and
+  the dawn message breaks down where it came from.
 
 **The pool: what the deck lets you place.**
 - Only **2 cards** are offered at a time.
@@ -54,9 +58,13 @@ fertilizer.)
   the heal spell also works during the day.
 
 **Roosts and merging.**
-- A bat card placed on an empty tile builds a level-1 roost. The roost keeps its bats
-  out and replaces fallen ones on a per-species cooldown (3 s for Little Brown Bats and
-  Fledglings, 14–16 s for heavies).
+- A bat card placed on an empty tile builds a level-1 roost. **Nothing is out at dusk.**
+  Each roost releases bats as its per-species cooldown fills (3 s for Little Brown Bats
+  and Fledglings, 14–16 s for heavies), one at a time, or in pairs for Little Brown
+  Bats, up to its maximum. The army builds through the night, and fallen bats are
+  replaced the same way.
+- Enemies start entering 5 s after dusk, so fast roosts get their first bats up. When
+  the last enemy falls there's a 2 s pause before dawn.
 - **Merging needs a matching level.** Two roosts of the same bat at the same level
   merge into one roost a level higher. By day, tap one roost and then the other; the
   first tile is freed. Merging is free. A pool card counts as a level-1 roost, so it can
@@ -84,9 +92,15 @@ fertilizer.)
   | Hammer-headed, Tube-lipped, White-winged | all 8 around |
   | Fledgling | none |
 
+- **Level 5: armour.** Bats from a level-5+ roost wear a helmet and breastplate (visual).
 - **Level 10: mega bat.** The roost releases one giant bat instead of its group: 3× the
   full group's HP and 1.5× its attack. It's only replaced after it dies, on a doubled
   cooldown.
+- **No level cap.** Roosts keep levelling past 10 (shown as M11, M12…) and stats keep
+  rising: +25% per level.
+- **Press and hold** a bat card or a roost to see which tiles its pattern would give
+  +1 (highlighted on the field).
+- Roosting bats are drawn hanging with their wings folded.
 - **Level distribution in bot runs:** end-of-level roosts are mostly levels 1–3, with
   pattern bumps carrying a few to 5–7. Level 10 hasn't appeared.
 
@@ -234,6 +248,11 @@ spare guano, and casts damage spells when enemies get close. Each cell is 8 seed
   player who never placed the commander lost Moth Cloud 6/10 as Flying Fox. Fledglings
   now respawn every 3 s, and the opening levels' waves grow more slowly. That player
   now wins both opening levels 10/10 with every starter.
+- **Gradual release + roost income:** bats arriving one at a time made defenses much
+  weaker; fast hawks reached the roosts before heavy roosts had released anything. Fixed
+  with a 5 s dusk lead and about 20% lower waves (not on the two opening levels). Ghost
+  Bat's attack was trimmed 42 to 34: its starter deck was beating the boss 5/8 at level
+  1, against 0/8 for Flying Fox.
 - **Earlier findings that still apply:** continuous cave damage ended runs on night 1,
   so leaks are a single hit. Spells had to get cheap to be worth holding.
 

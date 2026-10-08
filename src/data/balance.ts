@@ -5,18 +5,24 @@ export const BALANCE = {
   field: { cols: 5, roostRows: 3, height: 10, roostTopY: 6, caveY: 9.4 },
   /** Old lane stats (range/speed in lane units) convert to tiles with these factors. */
   units: { rangePerTile: 100, minMelee: 0.35, batSpeed: 2.5 / 100, enemySpeed: 1.6 / 100 },
-  /** Guano: the in-level currency for placing bats, refreshing the pool and casting spells. */
-  economy: { startGuano: 6, perDawn: 5, killsPerGuano: 4, refreshCost: 2, poolSize: 2, spellHandMax: 3 },
+  /**
+   * Guano: the in-level currency for placing bats, refreshing the pool and casting spells.
+   * Dawn income = perDawn + 1 per batsPerGuano bats housed in standing roosts + 1 per killsPerGuano kills.
+   * Roosts are the economy: early on it's a grind; investing in bats raises income, spells and rerolls don't.
+   */
+  economy: { startGuano: 6, perDawn: 2, batsPerGuano: 2, killsPerGuano: 4, refreshCost: 2, poolSize: 2, spellHandMax: 3 },
   /**
    * Roost levels. Two roosts of the same bat and the same level merge into one a level higher
    * (a pool card counts as a level-1 roost). Each level adds a bat (up to maxExtraBats) and
    * statPct to bat stats, so a merged roost is worth roughly the two it replaced.
-   * Level 10 holds one mega bat instead of a group.
+   * From megaLevel a roost holds one mega bat instead of a group. There's no cap: stats keep growing.
+   * Bats from roosts at armorLevel and up wear armour (visual).
    */
-  roostLevel: { max: 10, statPct: 25, hpPct: 20, batsPerLevel: 1, maxExtraBats: 4, megaHpMult: 3, megaAtkMult: 1.5, megaRespawnMult: 2 },
+  roostLevel: { megaLevel: 10, armorLevel: 5, statPct: 25, hpPct: 20, batsPerLevel: 1, maxExtraBats: 4, megaHpMult: 3, megaAtkMult: 1.5, megaRespawnMult: 2 },
   /** An enemy that reaches the cave hits once for atk × leakMult, then is gone (classic TD leak).
    *  Inside the roost zone with nothing blocking its column, an enemy rushes at speed × rushMult. */
-  night: { maxSeconds: 75, groupGap: 3, spawnGap: 0.7, leakMult: 4, rushMult: 3 },
+  /** duskLead: seconds before the first enemy enters, so roosts can release their first bats. */
+  night: { maxSeconds: 80, duskLead: 5, groupGap: 3, spawnGap: 0.7, leakMult: 4, rushMult: 3, dawnDelay: 2 },
   /** A roost destroyed at night is rebuilt at dawn with this fraction of its max HP. */
   rebuildHpPct: 50,
   /** The commander instead returns to the command zone; each placement costs `tax` more than the last. */

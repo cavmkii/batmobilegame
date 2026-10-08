@@ -84,8 +84,10 @@ export interface Unit {
   /** Home slot for bats (null for summoned bats). */
   home: number | null;
   commander: boolean;
-  /** A level-10 roost's single giant bat. */
+  /** A level-10+ roost's single giant bat. */
   mega: boolean;
+  /** From a roost at the armour level: drawn armoured. */
+  armored: boolean;
   dead: boolean;
   /** Last attack target position, for the renderer. */
   aimX: number;
@@ -128,6 +130,9 @@ export class Defense {
   kills = 0;
   /** Guano earned at the last dawn, for the UI. */
   lastIncome = 0;
+  lastIncomeParts = { base: 0, roosts: 0, kills: 0, relic: 0 };
+  /** Seconds since the last enemy fell; dawn waits for BALANCE.night.dawnDelay. */
+  private clearTimer = 0;
   /** Seconds into the current night (or total, for animation). */
   time = 0;
   clock = 0;
@@ -212,7 +217,7 @@ export class Defense {
     const a = this.slots[fromIdx]?.roost;
     const b = this.slots[toIdx]?.roost;
     return !!a && !!b && !a.isCommander && !b.isCommander && !a.ruined && !b.ruined
-      && a.batId === b.batId && a.level === b.level && b.level < L.max;
+      && a.batId === b.batId && a.level === b.level;
   }
 
   /** Merge roost `from` into roost `to`: `to` gains a level (and fires its pattern); `from` is freed. Free. */
@@ -260,7 +265,7 @@ export class Defense {
   }
 
   isMega(r: Roost): boolean {
-    return r.level >= L.max;
+    return r.level >= L.megaLevel;
   }
 
   // ---------------- Day actions ----------------
@@ -322,15 +327,10 @@ export class Defense {
     this.time = 0;
     this.kills = 0;
     this.buffs = { atkPct: 0, lifesteal: 0, atkUntil: 0, hastePct: 0, hasteUntil: 0, slowPct: 0, slowUntil: 0 };
-    for (const slot of this.slots) {
-      const r = slot.roost;
-      if (!r) continue;
-      r.respawnTimer = 0;
-      if (r.ruined) continue;
-      const n = this.batsPerRoost(r);
-      for (let k = 0; k < n; k++) this.spawnBat(slot, slot.x + (k - (n - 1) / 2) * 0.18, slot.y - 0.3);
-    }
-    let t = 0.5;
+    // Nobody is out at dusk: every roost starts its cooldown and releases bats as it fills.
+    this.clearTimer = 0;
+    for (const slot of this.slots) if (slot.roost) slot.roost.respawnTimer = 0;
+    let t = BALANCE.night.duskLead;
     this.spawnQueue = [];
     for (const g of this.tonight) {
       for (let k = 0; k < g.count; k++) {
@@ -387,8 +387,12 @@ export class Defense {
       return;
     }
     const enemiesLeft = this.spawnQueue.length > 0 || this.units.some((u) => u.side === 'enemy');
-    if (!enemiesLeft) this.dawn();
-    else if (this.time >= BALANCE.night.maxSeconds) {
+    if (!enemiesLeft) {
+      // Let the last kill land before the sun comes up.
+      this.clearTimer += dt;
+      if (this.clearTimer >= BALANCE.night.dawnDelay) this.dawn();
+    } else this.clearTimer = 0;
+    if (enemiesLeft && this.time >= BALANCE.night.maxSeconds) {
       // Stragglers at sunrise slip into the cave.
       for (const u of this.units) if (u.side === 'enemy' && !u.dead) this.leak(u);
       this.spawnQueue = [];
@@ -458,14 +462,14 @@ export class Defense {
   private levelUp(slot: Slot, by: number, fx = true) {
     const r = slot.roost!;
     const before = r.level;
-    r.level = Math.min(L.max, r.level + by);
+    r.level += by;
     if (r.level === before) return;
     const oldMax = r.maxHp;
     r.maxHp = this.roostMaxHp(slot);
     r.hp += r.maxHp - oldMax;
     if (fx) {
       this.effects.push({ kind: 'level', x: slot.x, y: slot.y, r: 0.5, t: this.clock });
-      this.floats.push({ x: slot.x, y: slot.y, text: r.level >= L.max ? 'MEGA!' : `Lv${r.level}`, color: '#ffe14a', t: this.clock });
+      this.floats.push({ x: slot.x, y: slot.y, text: r.level === L.megaLevel ? 'MEGA!' : r.level === L.armorLevel ? 'ARMOURED!' : `Lv${r.level}`, color: '#ffe14a', t: this.clock });
     }
   }
 
@@ -493,7 +497,8 @@ export class Defense {
       r.respawnTimer += dt;
       if (r.respawnTimer >= this.respawnTime(r)) {
         r.respawnTimer = 0;
-        this.spawnBat(slot, slot.x, slot.y - 0.3);
+        const n = Math.min(this.isMega(r) ? 1 : r.bp.roost.batch, this.batsPerRoost(r) - out);
+        for (let k = 0; k < n; k++) this.spawnBat(slot, slot.x + (k - (n - 1) / 2) * 0.2, slot.y - 0.3);
       }
     }
   }
@@ -514,7 +519,24 @@ export class Defense {
     }
   }
 
+  /**
+   * Bats housed in roosts (their full group size), which is what produces guano.
+   * `standingOnly`: roosts wrecked tonight produce nothing.
+   */
+  housedBats(standingOnly = false): number {
+    let n = 0;
+    for (const s of this.slots) if (s.roost && !(standingOnly && s.roost.ruined)) n += this.batsPerRoost(s.roost);
+    return n;
+  }
+
+  /** What tomorrow's dawn would pay if no roost were wrecked tonight (kills not included). */
+  projectedIncome(): number {
+    return E.perDawn + Math.floor(this.housedBats() / E.batsPerGuano) + this.relic.guanoPerDawn;
+  }
+
   private dawn() {
+    // Income is counted before wrecked roosts are rebuilt.
+    const wreckedIncome = Math.floor(this.housedBats(true) / E.batsPerGuano);
     for (const u of this.units) if (u.side === 'bat') u.dead = true;
     this.units = [];
     this.spawnQueue = [];
@@ -538,7 +560,14 @@ export class Defense {
       this.phase = 'won';
       return;
     }
-    this.lastIncome = E.perDawn + Math.floor(this.kills / E.killsPerGuano) + this.relic.guanoPerDawn;
+    this.lastIncomeParts = {
+      base: E.perDawn,
+      roosts: wreckedIncome,
+      kills: Math.floor(this.kills / E.killsPerGuano),
+      relic: this.relic.guanoPerDawn,
+    };
+    const p = this.lastIncomeParts;
+    this.lastIncome = p.base + p.roosts + p.kills + p.relic;
     this.guano += this.lastIncome;
     this.day++;
     this.fillPool();
@@ -587,7 +616,7 @@ export class Defense {
     return { ...s, range: Math.max(U.minMelee, s.range / U.rangePerTile), speed };
   }
 
-  private addUnit(p: Pick<Unit, 'side' | 'defId' | 'x' | 'y' | 'stats' | 'traits' | 'mods' | 'home' | 'commander' | 'mega'>): Unit {
+  private addUnit(p: Pick<Unit, 'side' | 'defId' | 'x' | 'y' | 'stats' | 'traits' | 'mods' | 'home' | 'commander' | 'mega' | 'armored'>): Unit {
     const k = p.stats.knockbacks;
     const u: Unit = {
       id: this.nextId++,
@@ -616,6 +645,7 @@ export class Defense {
     let hp = bp.stats.hp * lvl * (1 + this.relic.hpPct / 100);
     let atk = bp.stats.atk * lvl;
     const mega = this.isMega(r);
+    const armored = r.level >= L.armorLevel;
     if (mega) {
       const group = bp.roost.count + L.maxExtraBats;
       hp *= group * L.megaHpMult;
@@ -623,7 +653,7 @@ export class Defense {
     }
     if (slot.terrain === 'fig' && this.terrainMatches(slot.idx, bp.batId)) hp *= 1.3;
     this.addUnit({
-      side: 'bat', defId: bp.batId, x, y, home: slot.idx, mods: this.modsFor(slot), mega,
+      side: 'bat', defId: bp.batId, x, y, home: slot.idx, mods: this.modsFor(slot), mega, armored,
       commander: r.isCommander,
       stats: this.toTiles({ ...bp.stats, hp: Math.round(hp), atk: Math.round(atk) }, 'bat'),
       traits: bp.traits,
@@ -633,7 +663,7 @@ export class Defense {
   /** Summoned by spells: no home roost, level 1. */
   private spawnLooseBat(bp: UnitBlueprint, x: number, y: number) {
     this.addUnit({
-      side: 'bat', defId: bp.batId, x, y, home: null, mods: { ...NO_MODS, atkPct: this.relic.atkPct }, mega: false, commander: false,
+      side: 'bat', defId: bp.batId, x, y, home: null, mods: { ...NO_MODS, atkPct: this.relic.atkPct }, mega: false, armored: false, commander: false,
       stats: this.toTiles({ ...bp.stats, hp: Math.round(bp.stats.hp * (1 + this.relic.hpPct / 100)) }, 'bat'),
       traits: bp.traits,
     });
@@ -643,7 +673,7 @@ export class Defense {
     const def = ENEMY_BY_ID[id];
     const m = this.enemyMult;
     const s = { ...def.stats, hp: Math.round(def.stats.hp * m), atk: Math.round(def.stats.atk * m) };
-    this.addUnit({ side: 'enemy', defId: id, x, y: -0.3, stats: this.toTiles(s, 'enemy'), traits: def.traits, mods: NO_MODS, home: null, commander: false, mega: false });
+    this.addUnit({ side: 'enemy', defId: id, x, y: -0.3, stats: this.toTiles(s, 'enemy'), traits: def.traits, mods: NO_MODS, home: null, commander: false, mega: false, armored: false });
   }
 
   private computeAuras(bats: Unit[]) {

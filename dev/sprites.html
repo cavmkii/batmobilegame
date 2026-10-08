@@ -4,7 +4,7 @@ import { BATS } from '../src/data/bats';
 import { ENEMIES } from '../src/data/enemies';
 import { batSprite, enemySprite } from '../src/render/pixel';
 const add = (c, label) => { const f = document.createElement('figure'); const big = document.createElement('canvas'); big.width = c.width*2; big.height=c.height*2; const g=big.getContext('2d'); g.imageSmoothingEnabled=false; g.drawImage(c,0,0,big.width,big.height); f.append(big, Object.assign(document.createElement('figcaption'),{textContent:label})); document.body.append(f); };
-for (const b of BATS) { add(batSprite(b.id,0), b.name); add(batSprite(b.id,1), '(flap)'); }
+for (const b of BATS) { add(batSprite(b.id,0), b.name); add(batSprite(b.id,1), '(flap)'); add(batSprite(b.id,0,1,{folded:true}), '(roosting)'); add(batSprite(b.id,0,1,{armored:true}), '(Lv5 armour)'); }
 for (const e of ENEMIES) add(enemySprite(e.id), e.name);
 document.body.dataset.ready = '1';
 </script></body></html>
