@@ -480,6 +480,14 @@ registerScreen('battle', (app) => {
       sec('Star charts studied', FORMATIONS.filter((f) => (r.formations[f.id] ?? 1) > 1).map((f) =>
         row('✦', f.name, `Level ${r.formations[f.id]}: ${f.text(d.formationValue(f.id))}`))),
       sec('Active spells', timed),
+      sec('How nights work', [
+        row('🎯', 'Enemy targets', 'Enemies walk straight down their column. They attack bats in reach first, then the nearest roost in their column, then the cave.'),
+        row('🏔', 'Leaks', `An enemy that reaches the cave hits it once for ${BALANCE.night.leakMult}× its attack, then is gone.`),
+        row('🔨', 'Wrecked roosts', `A wrecked roost stops blocking and releases no bats until dawn, when it is rebuilt at ${BALANCE.rebuildHpPct}% HP${d.charms.has('phoenix') ? ' (Phoenix Roost: full HP, one level lower)' : ''}.`),
+        row('🛡', 'Armour', `Bats from roosts at level ${BALANCE.roostLevel.armorLevel}+ take ${BALANCE.roostLevel.armorPct}% less damage.`),
+        d.slots.some((s) => s.roost && !s.roost.nursery && BAT_BY_ID[s.roost.batId].clans.includes('SAN'))
+          ? row('🩸', 'Vampire sharing', `At dawn, each vampire roost heals its neighbouring roosts ${BALANCE.adjacency.vampireDawnHealPct}%.`) : '',
+      ].filter(Boolean)),
       sec('Economy', [
         row('◆', 'Dawn income', `About +${d.projectedIncome() + d.interestNow()} guano: base, 1 per ${BALANCE.economy.batsPerGuano} bats housed, 1 per ${d.rule.killsPerGuano} kills, Clusters.`),
         row('🏦', 'Interest', `+1 guano per ${BALANCE.interest.per} unspent at dawn, up to ${d.interestCap}. Now: +${d.interestNow()}.`),

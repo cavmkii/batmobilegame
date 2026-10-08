@@ -1,3 +1,4 @@
+import { BALANCE } from '../data/balance';
 import { BAT_BY_ID } from '../data/bats';
 import { CLANS, RARITY_COLOR } from '../data/clans';
 import { ENHANCE_BY_ID, isSharp } from '../data/enhance';
@@ -44,6 +45,7 @@ export function cardFace(card: Pick<Card, 'kind' | 'id' | 'mod'> & { upgraded?: 
       attackLabel(bp.traits, bp.stats.range),
       `Each bat ❤${fmt(bp.stats.hp)} ⚔${fmt(bp.stats.atk)} every ${bp.stats.rate}s`,
       ...bp.traits.map(describeTrait),
+      ...(def.clans.includes('SAN') ? [`Dawn: heals neighbouring roosts ${BALANCE.adjacency.vampireDawnHealPct}%`] : []),
     ];
   } else {
     const s = SPELL_BY_ID[card.id];

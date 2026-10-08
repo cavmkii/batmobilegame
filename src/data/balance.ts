@@ -18,9 +18,9 @@ export const BALANCE = {
    * (a pool card counts as a level-1 roost). Each level adds a bat (up to maxExtraBats) and
    * statPct to bat stats, so a merged roost is worth roughly the two it replaced.
    * From megaLevel a roost holds one mega bat instead of a group. There's no cap: stats keep growing.
-   * Bats from roosts at armorLevel and up wear armour (visual).
+   * Bats from roosts at armorLevel and up wear armour: they take armorPct less damage.
    */
-  roostLevel: { megaLevel: 10, armorLevel: 5, statPct: 25, hpPct: 20, batsPerLevel: 1, maxExtraBats: 4, megaHpMult: 3, megaAtkMult: 1.5, megaRespawnMult: 2 },
+  roostLevel: { megaLevel: 10, armorLevel: 5, armorPct: 20, statPct: 25, hpPct: 20, batsPerLevel: 1, maxExtraBats: 4, megaHpMult: 3, megaAtkMult: 1.5, megaRespawnMult: 2 },
   /** An enemy that reaches the cave hits once for atk × leakMult, then is gone (classic TD leak). */
   /** duskLead: seconds before the first enemy enters, so roosts can release their first bats. */
   night: { maxSeconds: 80, duskLead: 5, groupGap: 3, spawnGap: 0.7, leakMult: 4, dawnDelay: 2 },

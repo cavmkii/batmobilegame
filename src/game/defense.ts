@@ -852,9 +852,13 @@ export class Defense {
     for (const slot of this.slots) {
       const r = slot.roost;
       if (!r || !BAT_BY_ID[r.batId].clans.includes('SAN')) continue;
-      // Vampire bats regurgitate blood for hungry roost-mates.
+      // Vampire bats regurgitate blood for hungry roost-mates: neighbours heal at dawn.
       for (const n of this.neighbours(slot)) {
-        if (n.roost && !n.roost.ruined) n.roost.hp = Math.min(n.roost.maxHp, n.roost.hp + (n.roost.maxHp * BALANCE.adjacency.vampireDawnHealPct) / 100);
+        if (!n.roost || n.roost.ruined || n.roost.hp >= n.roost.maxHp) continue;
+        const before = n.roost.hp;
+        n.roost.hp = Math.min(n.roost.maxHp, n.roost.hp + (n.roost.maxHp * BALANCE.adjacency.vampireDawnHealPct) / 100);
+        this.floats.push({ x: n.x, y: n.y, text: `🩸+${Math.round(n.roost.hp - before)}`, color: '#ff8aa0', t: this.clock });
+        this.effects.push({ kind: 'heal', x: n.x, y: n.y, r: 0.4, t: this.clock });
       }
     }
     if (this.day >= this.nights) {
@@ -1158,6 +1162,7 @@ export class Defense {
 
   private damage(t: Unit, amount: number): number {
     if (t.dead) return 0;
+    if (t.armored) amount *= 1 - L.armorPct / 100;
     const dealt = Math.min(t.hp, amount);
     t.hp -= amount;
     this.floats.push({ x: t.x, y: t.y, text: `${Math.round(amount)}`, color: t.side === 'bat' ? '#ff7a7a' : '#ffffff', t: this.clock });
