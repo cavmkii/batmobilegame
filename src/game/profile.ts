@@ -87,7 +87,8 @@ function migrate(p: Profile) {
     p.run.formations ??= {};
     p.run.charmOffer ??= null;
     p.run.chartOffer ??= null;
-    p.run.tally ??= { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0 };
+    p.run.tally ??= { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0, wrecks: 0 };
+    p.run.tally.wrecks ??= 0;
     // Relics became charms: carry over the ones that still exist, while slots last.
     const legacyRun = p.run as typeof p.run & { relics?: string[]; rewardRelic?: unknown };
     for (const id of legacyRun.relics ?? []) {

@@ -6,7 +6,7 @@ import type { Card, CardMod, ClanId, Rarity } from '../data/types';
 import { CHARMS, CHARM_BY_ID, CHARM_PRICE, CHARM_SLOTS, charmSellValue } from '../data/charms';
 import { ENHANCEMENTS, ENHANCE_BY_ID, isSharp } from '../data/enhance';
 import { FORMATIONS, type FormationId } from '../data/formations';
-import { GOALS, SAGA_ROWS, sagaMaxDepth, sagaNode, type GoalId } from '../data/saga';
+import { GOALS, SAGA_ROWS, sagaMaxDepth, sagaNode, type GoalId, type ObjectiveId } from '../data/saga';
 import { buildStartingDeck, draftPool, newCard, validateSetup } from './deck';
 import { generateMap, type MapNode, type RunMap } from './map';
 import type { Profile } from './profile';
@@ -63,10 +63,10 @@ export interface RunState {
   /** Saga node number, if this run is a saga node. */
   saga?: number;
   restrict?: ClanId;
-  objective?: 'nursery';
+  objective?: ObjectiveId;
   difficulty?: number;
   /** Star-goal bookkeeping across the run. */
-  tally: { leaks: number; rerolls: number; maxRoosts: number; maxLevel: number };
+  tally: { leaks: number; rerolls: number; maxRoosts: number; maxLevel: number; wrecks: number };
 }
 
 export const runRng = (run: RunState) => new Rng(run.rngState);
@@ -119,7 +119,7 @@ export function startRun(p: Profile, matriarchId: string, flock: string[], seed:
     restrict: node?.restrict,
     objective: node?.objective,
     difficulty: node?.difficulty,
-    tally: { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0 },
+    tally: { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0, wrecks: 0 },
   };
   p.flock = [...flock];
   p.lastMatriarch = matriarchId;
@@ -183,7 +183,7 @@ export function resolveBattle(run: RunState, won: boolean, caveHpLeft: number) {
   run.figs += rw.figs;
   for (const id of run.charms) {
     const e = CHARM_BY_ID[id]?.effect;
-    if (e?.kind === 'healAfterBattle') run.caveHp = Math.min(run.caveMax, run.caveHp + e.amount);
+    if (e?.kind === 'healAfterBattle') heal(run, e.amount);
   }
   if (node.type === 'boss') {
     run.status = 'won';
@@ -206,6 +206,7 @@ export function applyLevelResult(run: RunState, res: { shattered: string[]; brok
   run.tally.rerolls += res.tally.rerolls;
   run.tally.maxRoosts = Math.max(run.tally.maxRoosts, res.tally.maxRoosts);
   run.tally.maxLevel = Math.max(run.tally.maxLevel, res.tally.maxLevel);
+  run.tally.wrecks += res.tally.wrecks ?? 0;
 }
 
 // ---------------- Charms, star charts, enhancements ----------------
@@ -256,7 +257,7 @@ export function goalMet(run: RunState, g: GoalId): boolean {
   switch (g) {
     case 'noLeak': return t.leaks === 0;
     case 'healthy': return run.caveHp >= run.caveMax * 0.75;
-    case 'frugal': return t.rerolls === 0;
+    case 'unbroken': return (t.wrecks ?? 0) === 0;
     case 'small': return t.maxRoosts <= 7;
     case 'tall': return t.maxLevel >= 6;
   }
@@ -325,7 +326,9 @@ export function upgradeCard(run: RunState, uid: string): boolean {
   return true;
 }
 
+/** Heal the cave (no-op on a Fragile-cave saga node; damage still applies). */
 export function heal(run: RunState, amount: number) {
+  if (amount > 0 && run.objective === 'fragile') return;
   run.caveHp = Math.min(run.caveMax, Math.round(run.caveHp + amount));
 }
 
@@ -434,6 +437,115 @@ export const EVENTS: RunEvent[] = [
         },
       },
       { label: 'Guide it home', detail: '+30 Figs', apply: (r) => ((r.figs += 30), 'Its colony leaves you a gift.') },
+    ],
+  },
+  {
+    id: 'guano_miners',
+    title: 'Guano Miners',
+    text: 'Miners with sacks and lanterns. For centuries bat guano was dug out of caves for fertiliser and for the saltpetre in gunpowder.',
+    options: [
+      {
+        label: 'Trade with them', detail: '+45 Figs, lose 10% cave HP',
+        apply: (r) => { r.figs += 45; r.caveHp = Math.max(1, Math.round(r.caveHp - r.caveMax * 0.1)); return 'They pay well, and dig too deep.'; },
+      },
+      { label: 'Drive them off', detail: 'Nothing happens', apply: () => 'The cave goes quiet again.' },
+    ],
+  },
+  {
+    id: 'white_nose',
+    title: 'Sick Colony',
+    text: 'A neighbouring colony wakes too often in winter, muzzles dusted white. White-nose syndrome, a fungal disease, has killed millions of hibernating bats in North America.',
+    options: [
+      {
+        label: 'Keep apart', detail: 'Remove a random Fledgling from your deck',
+        apply: (r, rng) => {
+          const f = r.deck.filter((c) => c.id === 'fledgling');
+          if (!f.length || r.deck.length <= 4) return 'You keep your distance; nothing changes.';
+          removeCard(r, rng.pick(f).uid);
+          return 'One young bat stays behind. The rest stay healthy.';
+        },
+      },
+      {
+        label: 'Take in the healthy ones', detail: 'Add 2 Fledglings, heal 10%',
+        apply: (r) => {
+          let n = 0;
+          for (let k = 0; k < 2 && !deckFull(r); k++) n += addCard(r, { kind: 'bat', id: 'fledgling' }) ? 1 : 0;
+          heal(r, r.caveMax * 0.1);
+          return n ? `${n} Fledgling${n > 1 ? 's' : ''} join the colony.` : 'No room; you share what food you can.';
+        },
+      },
+    ],
+  },
+  {
+    id: 'moth_bloom',
+    title: 'Moth Bloom',
+    text: 'A warm wet night and the air is thick with moths. A single little brown bat can catch hundreds of insects in a night.',
+    options: [
+      {
+        label: 'Feast', detail: 'Copy a random bat card in your deck',
+        apply: (r, rng) => {
+          const bats = r.deck.filter((c) => c.kind === 'bat');
+          if (!bats.length || deckFull(r)) return 'Everyone eats well, but there is no room for more.';
+          const c = rng.pick(bats);
+          addCard(r, { kind: 'bat', id: c.id });
+          return `Well fed, another ${BAT_BY_ID[c.id].name} joins.`;
+        },
+      },
+      { label: 'Stockpile', detail: '+30 Figs', apply: (r) => ((r.figs += 30), 'You trade the surplus for figs.') },
+    ],
+  },
+  {
+    id: 'thunderstorm',
+    title: 'Thunderstorm',
+    text: 'Rain hammers the hillside. Bats mostly stay in on stormy nights: wet wings cost a lot of energy to fly.',
+    options: [
+      { label: 'Shelter', detail: 'Heal 15%', apply: (r) => (heal(r, r.caveMax * 0.15), 'The colony waits it out.') },
+      {
+        label: 'Fly through it', detail: 'A random card becomes Sharp, lose 10% cave HP',
+        apply: (r, rng) => {
+          const c = r.deck.filter((x) => !x.mod);
+          r.caveHp = Math.max(1, Math.round(r.caveHp - r.caveMax * 0.1));
+          if (!c.length) return 'Soaked, and nothing learned.';
+          const pick = rng.pick(c);
+          pick.mod = 'sharp';
+          return `${cardName(pick)} comes back hardened.`;
+        },
+      },
+    ],
+  },
+  {
+    id: 'mist_nets',
+    title: 'Mist Nets',
+    text: 'Researchers string fine nets across a flyway, then measure, band and release every bat they catch. Long-term banding is how we know some small bats live over 30 years.',
+    options: [
+      {
+        label: 'Get banded', detail: 'Study a random star chart',
+        apply: (r, rng) => {
+          const f = rng.pick(FORMATIONS);
+          studyChart(r, f.id);
+          return `The researchers' notes give you an idea: ${f.name} is now level ${r.formations[f.id]}.`;
+        },
+      },
+      { label: 'Slip past', detail: '+20 Figs', apply: (r) => ((r.figs += 20), 'You find a dropped snack bag.') },
+    ],
+  },
+  {
+    id: 'old_roost',
+    title: 'Abandoned Roost',
+    text: 'An old roost, empty for years. The ceiling is stained dark where thousands of bats once hung.',
+    options: [
+      {
+        label: 'Search it', detail: 'A random enhancement on a random bat card',
+        apply: (r, rng) => {
+          const bats = r.deck.filter((c) => c.kind === 'bat' && !c.mod);
+          if (!bats.length) return 'Nothing here your colony can use.';
+          const c = rng.pick(bats);
+          const e = rng.pick(ENHANCEMENTS);
+          c.mod = e.id;
+          return `${BAT_BY_ID[c.id].name} becomes ${e.name}: ${e.desc}`;
+        },
+      },
+      { label: 'Rest here', detail: 'Heal 20%', apply: (r) => (heal(r, r.caveMax * 0.2), 'A quiet day in an old home.') },
     ],
   },
 ];

@@ -4,6 +4,7 @@ import { CLANS, CLAN_ORDER } from '../data/clans';
 import { formationValue, type FormationId } from '../data/formations';
 import { MATRIARCH_BY_ID, matriarchGuano } from '../data/matriarchs';
 import type { BossRuleId } from '../data/bossRules';
+import { HUNT_PCT, type ObjectiveId } from '../data/saga';
 import { ENCOUNTERS, ENEMY_BY_ID, type Encounter } from '../data/enemies';
 import { CHARM_BY_ID } from '../data/charms';
 import { isSharp } from '../data/enhance';
@@ -45,8 +46,12 @@ export interface DefenseConfig {
   difficulty?: number;
   /** Formation levels from star charts (default 1). */
   formationLevels?: Partial<Record<FormationId, number>>;
-  /** 'nursery': a nursery roost sits mid-field; if it is wrecked, the level is lost. */
-  objective?: 'nursery';
+  /**
+   * 'nursery': a nursery roost sits mid-field; if it is wrecked, the level is lost.
+   * 'hunt': the level is only won if HUNT_PCT of its enemies were killed.
+   * 'fragile': the cave can't be healed.
+   */
+  objective?: ObjectiveId;
 }
 
 export interface Roost {
@@ -192,7 +197,11 @@ export class Defense {
   /** Charms that broke this level (Second Wind). */
   brokenCharms: string[] = [];
   /** For star goals: leaks, rerolls, most roosts on the field, highest roost level. */
-  tally = { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0 };
+  tally = { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0, wrecks: 0 };
+  /** Enemies spawned and killed this level (Hunt objective). */
+  hunt = { spawned: 0, killed: 0 };
+  /** Why the level was lost, for the result screen. */
+  lostReason: 'cave' | 'nursery' | 'hunt' = 'cave';
   /** Free rerolls left today (Thrift). */
   private freeRerolls = 0;
   /** Last dawn's interest, for the UI. */
@@ -883,6 +892,12 @@ export class Defense {
       }
     }
     if (this.day >= this.nights) {
+      // Hunt: survived, but did the colony catch enough?
+      if (this.cfg.objective === 'hunt' && this.hunt.killed < Math.ceil((this.hunt.spawned * HUNT_PCT) / 100)) {
+        this.lostReason = 'hunt';
+        this.phase = 'lost';
+        return;
+      }
       this.phase = 'won';
       return;
     }
@@ -912,9 +927,11 @@ export class Defense {
       r.ruined = true;
       r.hp = 0;
       this.floats.push({ x: slot.x, y: slot.y, text: 'NURSERY LOST', color: '#ff5050', t: this.clock });
+      this.lostReason = 'nursery';
       this.phase = 'lost';
       return;
     }
+    this.tally.wrecks++;
     // Glass cards in the roost shatter: gone from the deck for good.
     if (r.glass.length) {
       this.shattered.push(...r.glass);
@@ -1013,6 +1030,7 @@ export class Defense {
   }
 
   private spawnEnemy(id: string, x: number) {
+    this.hunt.spawned++;
     const def = ENEMY_BY_ID[id];
     const m = this.enemyMult;
     const s = { ...def.stats, hp: Math.round(def.stats.hp * m), atk: Math.round(def.stats.atk * m) };
@@ -1211,7 +1229,10 @@ export class Defense {
 
   private kill(t: Unit) {
     t.dead = true;
-    if (t.side === 'enemy') this.kills++;
+    if (t.side === 'enemy') {
+      this.kills++;
+      this.hunt.killed++;
+    }
     t.hp = 0;
     this.effects.push({ kind: 'death', x: t.x, y: t.y, r: 0.3, t: this.clock });
     const dh = t.traits.find((x) => x.kind === 'deathHeal');
@@ -1272,7 +1293,7 @@ export class Defense {
       case 'healAll':
         for (const u of this.units) if (u.side === 'bat' && !u.dead) this.heal(u, (u.maxHp * eff.pct * amt) / 100);
         for (const s of this.slots) if (s.roost && !s.roost.ruined) s.roost.hp = Math.min(s.roost.maxHp, s.roost.hp + (s.roost.maxHp * eff.pct * amt) / 100);
-        this.cave.hp = Math.min(this.cave.max, this.cave.hp + eff.caveHeal * amt);
+        if (this.cfg.objective !== 'fragile') this.cave.hp = Math.min(this.cave.max, this.cave.hp + eff.caveHeal * amt);
         this.effects.push({ kind: 'heal', x: 2.5, y: 7.5, r: 2.5, t: c });
         break;
       case 'buffAll':

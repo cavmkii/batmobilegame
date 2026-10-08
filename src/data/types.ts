@@ -127,6 +127,8 @@ export interface EnemyDef {
   threat: number;
   /** Field-guide entry. */
   fact: string;
+  /** Palette overrides on the shared sprite (bosses reuse a smaller enemy's art). */
+  tint?: Record<string, string>;
 }
 
 /** Flat passive effects some charms carry (they used to be relics). */

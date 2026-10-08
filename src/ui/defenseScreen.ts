@@ -7,6 +7,7 @@ import { CHARM_BY_ID, CHARM_SLOTS } from '../data/charms';
 import { ENHANCE_BY_ID, isSharp } from '../data/enhance';
 import { FORMATIONS, type FormationId } from '../data/formations';
 import { MATRIARCH_BY_ID } from '../data/matriarchs';
+import { HUNT_PCT, OBJECTIVES } from '../data/saga';
 import { ENEMY_BY_ID } from '../data/enemies';
 import { SPELL_BY_ID } from '../data/spells';
 import { TERRAIN } from '../data/terrain';
@@ -19,6 +20,12 @@ import { registerScreen } from './app';
 import { batImg, clanPips, patternGrid, rarityOf } from './components';
 import { h, modal } from './dom';
 import { endRun } from './runScreens';
+
+const LOST_TEXT = {
+  cave: 'The cave has fallen.',
+  nursery: 'The nursery was wrecked.',
+  hunt: `Too many got away: the hunt needed ${HUNT_PCT}% of the enemies killed.`,
+} as const;
 
 const hash = (s: string) => [...s].reduce((a, c) => (Math.imul(a, 31) + c.charCodeAt(0)) >>> 0, 7);
 
@@ -50,7 +57,7 @@ registerScreen('battle', (app) => {
     bossRule: node.bossRule,
     difficulty: r.difficulty,
     formationLevels: r.formations,
-    objective: node.type === 'battle' ? r.objective : undefined,
+    objective: r.objective === 'fragile' || node.type === 'battle' ? r.objective : undefined,
   });
   // Field guide: enemies count as met once their night begins.
   const meet = () => {
@@ -461,7 +468,8 @@ registerScreen('battle', (app) => {
         mat ? row('♛', `${BAT_BY_ID[mat.batId].name}: ${mat.title}`, mat.rule) : '',
         boss ? row(boss.icon, `Boss rule: ${boss.name}`, boss.desc) : '',
         r.restrict ? row('🔒', 'Clan restriction', `Only ${CLANS[r.restrict].name} bats can be drafted.`) : '',
-        d.slots.some((s) => s.roost?.nursery) ? row('🍼', 'Nursery', 'If the nursery is wrecked, the level is lost.') : '',
+        r.objective ? row(OBJECTIVES[r.objective].icon, OBJECTIVES[r.objective].name, OBJECTIVES[r.objective].desc
+          + (r.objective === 'hunt' ? ` So far: ${d.hunt.killed} of ${d.hunt.spawned} killed.` : '')) : '',
         ...(r.modifiers ?? []).map((id) => MODIFIER_BY_ID[id] ? row(MODIFIER_BY_ID[id].icon, MODIFIER_BY_ID[id].name, MODIFIER_BY_ID[id].desc) : ''),
         r.difficulty && r.difficulty > 1 ? row('📈', 'Saga depth', `Enemies have +${Math.round((r.difficulty - 1) * 100)}% HP and attack.`) : '',
       ].filter(Boolean)),
@@ -539,7 +547,7 @@ registerScreen('battle', (app) => {
     overlay.classList.add('show');
     overlay.replaceChildren(h('div.result-box',
       h('h1.title', won ? (node.type === 'boss' ? 'BOSS DEFEATED' : 'DAWN') : 'DEFEAT'),
-      h('p', won ? `${d.encounter.name}: survived ${d.nights} nights.` : 'The cave has fallen.'),
+      h('p', won ? `${d.encounter.name}: survived ${d.nights} nights.` : LOST_TEXT[d.lostReason]),
       h('button.big.primary', { onclick: () => (r.status === 'active' ? app.go({ name: 'reward' }) : endRun(app)) }, 'Continue'),
     ));
   };

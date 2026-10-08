@@ -89,7 +89,8 @@ export function enemySprite(enemyId: string, flash = false, scale = 1): HTMLCanv
   let c = cache.get(key);
   if (!c) {
     const s = ENEMY_SPRITES[def.sprite];
-    const pal = flash ? Object.fromEntries(Object.keys(s.palette).map((k) => [k, '#ffffff'])) : s.palette;
+    const base = { ...s.palette, ...(def.tint ?? {}) };
+    const pal = flash ? Object.fromEntries(Object.keys(base).map((k) => [k, '#ffffff'])) : base;
     c = gridToCanvas(s.grid, pal, px);
     cache.set(key, c);
   }

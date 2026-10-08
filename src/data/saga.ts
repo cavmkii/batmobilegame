@@ -9,15 +9,26 @@ import type { ClanId } from './types';
  * The first nodes are hand-made; after that they're generated from the node number, with
  * difficulty climbing like Balatro's stakes.
  */
-export type GoalId = 'noLeak' | 'healthy' | 'frugal' | 'small' | 'tall';
+export type GoalId = 'noLeak' | 'healthy' | 'unbroken' | 'small' | 'tall';
 
 export const GOALS: Record<GoalId, { name: string; desc: string }> = {
   noLeak: { name: 'Sealed', desc: 'No enemy reaches the cave all run' },
   healthy: { name: 'Healthy', desc: 'Finish with at least 75% cave HP' },
-  frugal: { name: 'Frugal', desc: 'Never reroll the pool' },
+  unbroken: { name: 'Unbroken', desc: 'Never let a roost be wrecked' },
   small: { name: 'Small colony', desc: 'Never have more than 7 roosts at once' },
   tall: { name: 'Tower', desc: 'Build a level-6 roost' },
 };
+
+export type ObjectiveId = 'nursery' | 'hunt' | 'fragile';
+
+export const OBJECTIVES: Record<ObjectiveId, { icon: string; name: string; desc: string }> = {
+  nursery: { icon: '🍼', name: 'Protect the nursery', desc: 'A roost of pups sits mid-field in each regular battle. If it is wrecked, the level is lost.' },
+  hunt: { icon: '🎯', name: 'Hunt', desc: `In each regular battle, kill at least ${85}% of the enemies that come, or the level is lost.` },
+  fragile: { icon: '🕳', name: 'Fragile cave', desc: 'The cave can\'t be healed this run: no rest, spell or charm healing.' },
+};
+
+/** Share of a level's enemies a Hunt objective needs killed. */
+export const HUNT_PCT = 85;
 
 export interface SagaNode {
   n: number;
@@ -27,8 +38,8 @@ export interface SagaNode {
   modifiers: string[];
   /** Deck restriction: only bats of this clan (Fledglings and spells always allowed). */
   restrict?: ClanId;
-  /** Level objective on the run's regular battles. */
-  objective?: 'nursery';
+  /** Objective: nursery and hunt apply to regular battles; fragile to the whole run. */
+  objective?: ObjectiveId;
   bossRule: BossRuleId;
   goals: [GoalId, GoalId];
   /** Enemy HP and attack multiplier. */
@@ -39,16 +50,16 @@ type Authored = Omit<SagaNode, 'n' | 'difficulty'>;
 
 const AUTHORED: Authored[] = [
   { name: 'First Flight', blurb: 'A quiet karst valley. Learn the night.', biome: 'cave_country', modifiers: [], bossRule: 'storm', goals: ['healthy', 'tall'] },
-  { name: 'Barnyard', blurb: 'Yard lights draw insects; cattle draw vampires.', biome: 'farmland', modifiers: [], bossRule: 'drought', goals: ['noLeak', 'frugal'] },
-  { name: 'Agave Trail', blurb: 'Nectar country: flowering cacti everywhere.', biome: 'sonoran', modifiers: [], bossRule: 'hawk_eye', goals: ['tall', 'frugal'] },
+  { name: 'Barnyard', blurb: 'Yard lights draw insects; cattle draw vampires.', biome: 'farmland', modifiers: [], bossRule: 'drought', goals: ['noLeak', 'unbroken'] },
+  { name: 'Agave Trail', blurb: 'Nectar country: flowering cacti everywhere.', biome: 'sonoran', modifiers: [], bossRule: 'hawk_eye', goals: ['tall', 'unbroken'] },
   { name: 'The Nursery', blurb: 'Pups in the roost. Protect the nursery at all costs.', biome: 'cave_country', modifiers: [], objective: 'nursery', bossRule: 'owl_watch', goals: ['healthy', 'small'] },
   { name: 'Hum of Insects', blurb: 'Only insect-eaters answer the call.', biome: 'farmland', modifiers: [], restrict: 'INS', bossRule: 'storm', goals: ['noLeak', 'tall'] },
   { name: 'Fig Canopy', blurb: 'Fruit everywhere. Fruit bats only.', biome: 'rainforest', modifiers: [], restrict: 'FRU', bossRule: 'drought', goals: ['healthy', 'small'] },
-  { name: 'Moonless', blurb: 'No moon tonight: you won\'t see what\'s coming.', biome: 'cave_country', modifiers: ['new_moon'], bossRule: 'owl_watch', goals: ['noLeak', 'frugal'] },
-  { name: 'Swarm Season', blurb: 'Every wave a quarter bigger.', biome: 'rainforest', modifiers: ['swarm_season'], bossRule: 'hawk_eye', goals: ['tall', 'healthy'] },
+  { name: 'Moonless', blurb: 'No moon tonight: you won\'t see what\'s coming.', biome: 'cave_country', modifiers: ['new_moon'], bossRule: 'owl_watch', goals: ['noLeak', 'unbroken'] },
+  { name: 'Swarm Season', blurb: 'Every wave a quarter bigger, and every one must be hunted.', biome: 'rainforest', modifiers: ['swarm_season'], objective: 'hunt', bossRule: 'hawk_eye', goals: ['tall', 'healthy'] },
   { name: 'River Run', blurb: 'Fishing bats only, over dark water.', biome: 'rainforest', modifiers: [], restrict: 'PIS', bossRule: 'storm', goals: ['noLeak', 'small'] },
   { name: 'Crumbling Cave', blurb: 'The old cave is failing, and the nursery is inside.', biome: 'cave_country', modifiers: ['old_cave'], objective: 'nursery', bossRule: 'drought', goals: ['healthy', 'tall'] },
-  { name: 'Blood Moon', blurb: 'Vampires only. The cattle pens are full.', biome: 'farmland', modifiers: ['long_nights'], restrict: 'SAN', bossRule: 'owl_watch', goals: ['small', 'frugal'] },
+  { name: 'Blood Moon', blurb: 'Vampires only, and the cave won\'t mend.', biome: 'farmland', modifiers: ['long_nights'], objective: 'fragile', restrict: 'SAN', bossRule: 'owl_watch', goals: ['small', 'unbroken'] },
   { name: 'Long Migration', blurb: 'Nectar bats only, long nights, thin pickings.', biome: 'sonoran', modifiers: ['long_nights', 'lean_times'], restrict: 'NEC', bossRule: 'hawk_eye', goals: ['tall', 'noLeak'] },
 ];
 
@@ -75,7 +86,7 @@ export function sagaNode(n: number): SagaNode {
     biome: rng.pick(BIOMES).id,
     modifiers: mods,
     restrict: rng.pick(RESTRICTS),
-    objective: rng.next() < 0.25 ? 'nursery' : undefined,
+    objective: rng.pick<ObjectiveId | undefined>([undefined, undefined, undefined, 'nursery', 'hunt', 'fragile']),
     bossRule: rng.pick(BOSS_RULES).id,
     goals,
     difficulty: sagaDifficulty(n),

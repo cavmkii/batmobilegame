@@ -296,8 +296,8 @@ registerScreen('shop', (app) => {
           app.refresh();
         }),
       }, `Remove a card  🫐 ${P.remove}`),
-      h('button', { disabled: s.healUsed || r.figs < P.heal, onclick: buy(P.heal, () => { heal(r, r.caveMax * 0.2); s.healUsed = true; }) },
-        `Heal 20%  🫐 ${P.heal}`),
+      h('button', { disabled: s.healUsed || r.figs < P.heal || r.objective === 'fragile', onclick: buy(P.heal, () => { heal(r, r.caveMax * 0.2); s.healUsed = true; }) },
+        r.objective === 'fragile' ? 'Fragile cave: no healing' : `Heal 20%  🫐 ${P.heal}`),
     ),
     h('button.big.primary', { onclick: () => { leaveNode(r); app.save(); app.go({ name: 'map' }); } }, 'Leave'),
   );
@@ -314,7 +314,8 @@ registerScreen('rest', (app) => {
     runHud(app),
     h('p.center', 'The colony huddles together. Clustering saves heat: torpor and roost-mates are how small bats stretch their energy.'),
     h('div.actions.vertical',
-      h('button.big.primary', { onclick: () => { heal(r, amount); done(); } }, `Rest: heal ${fmt(amount)} cave HP`),
+      h('button.big.primary', { disabled: r.objective === 'fragile', onclick: () => { heal(r, amount); done(); } },
+        r.objective === 'fragile' ? 'Fragile cave: resting can\'t heal it' : `Rest: heal ${fmt(amount)} cave HP`),
       h('button.big', {
         onclick: () => pickFromDeck(app, 'Make which card Sharp? (replaces another enhancement)', (c) => c.mod !== 'sharp', (c) => {
           upgradeCard(r, c.uid);

@@ -609,3 +609,50 @@ describe('night pacing and economy', () => {
     expect(d.units[d.units.length - 1].armored).toBe(true);
   });
 });
+
+describe('trim-and-fix round', () => {
+  it('Echo puts a plain copy of the card in the discard', () => {
+    const echo = { ...newCard('bat', 'little_brown'), mod: 'echo' as const };
+    const d = new Defense(cfg({ deck: [echo, newCard('bat', 'fledgling')], caveHp: 1e9, caveMax: 1e9 }));
+    d.guano = 99;
+    d.place(d.pool.findIndex((c) => c?.uid === echo.uid), at(0, 0));
+    expect(d.discard.filter((c) => c.id === 'little_brown').length).toBe(2);
+    expect(d.discard.find((c) => c.uid !== echo.uid && c.id === 'little_brown')!.mod).toBeUndefined();
+  });
+
+  it('armoured bats take less damage', () => {
+    const d = big();
+    put(d, at(0, 0), 'little_brown', BALANCE.roostLevel.armorLevel);
+    d.endDay();
+    for (let k = 0; k < 60 * 4; k++) d.step(1 / 60);
+    const bat = d.units.find((u) => u.side === 'bat' && u.home === at(0, 0))!;
+    expect(bat.armored).toBe(true);
+    const hp = bat.hp;
+    (d as unknown as { damage(t: unknown, n: number): number }).damage(bat, 10);
+    expect(hp - bat.hp).toBeCloseTo(10 * (1 - BALANCE.roostLevel.armorPct / 100));
+  });
+
+  it('Hunt loses a level where too many enemies got away; Fragile blocks cave healing', () => {
+    const d = new Defense(cfg({ objective: 'hunt', caveHp: 1e9, caveMax: 1e9 }));
+    while (d.phase === 'day') {
+      d.endDay();
+      for (const u of d.units) u.dead = true;
+      for (let k = 0; k < 60 * 120 && (d.phase as string) === 'night'; k++) {
+        for (const u of d.units) if (u.side === 'bat') u.dead = true; // nobody fights back
+        d.step(1 / 60);
+      }
+    }
+    expect(d.phase).toBe('lost');
+    expect(d.lostReason).toBe('hunt');
+    const f = new Defense(cfg({ objective: 'fragile', deck: deckOf('ripe_harvest', 'fledgling'), caveHp: 500, caveMax: 1000 }));
+    f.guano = 9;
+    expect(f.cast(0)).toBe(true);
+    expect(f.cave.hp).toBe(500);
+  });
+
+  it('every boss encounter is a boss with a finale', () => {
+    const bosses = ENCOUNTERS.filter((e) => e.tier === 'boss');
+    expect(bosses.length).toBeGreaterThanOrEqual(4);
+    for (const b of bosses) expect(b.finale?.length, b.id).toBeGreaterThan(0);
+  });
+});

@@ -205,9 +205,46 @@ describe('saga', async () => {
     expect(run.figs).toBeGreaterThan(figs);
     takeCharm(run, 'second_wind');
     const uid = run.deck[0].uid;
-    applyLevelResult(run, { shattered: [uid], brokenCharms: ['second_wind'], tally: { leaks: 2, rerolls: 1, maxRoosts: 5, maxLevel: 3 } });
+    applyLevelResult(run, { shattered: [uid], brokenCharms: ['second_wind'], tally: { leaks: 2, rerolls: 1, maxRoosts: 5, maxLevel: 3, wrecks: 1 } });
     expect(run.deck.some((c) => c.uid === uid)).toBe(false);
     expect(run.charms).toEqual([]);
-    expect(run.tally).toEqual({ leaks: 2, rerolls: 1, maxRoosts: 5, maxLevel: 3 });
+    expect(run.tally).toEqual({ leaks: 2, rerolls: 1, maxRoosts: 5, maxLevel: 3, wrecks: 1 });
+  });
+});
+
+describe('save migrations and events', async () => {
+  const { loadProfile, saveProfile } = await import('../src/game/profile');
+  const { EVENTS } = await import('../src/game/run');
+
+  it('turns upgrades into Sharp, talents into the evolved fork, relics into charms', () => {
+    const store: Record<string, string> = {};
+    (globalThis as unknown as { localStorage: Storage }).localStorage = {
+      getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; }, removeItem: (k: string) => { delete store[k]; },
+    } as Storage;
+    const p = starter('ghost_bat');
+    p.roster.little_brown = { ...p.roster.little_brown, evolved: true, talents: [true, true] } as never;
+    const xp = p.xp;
+    const run = startRun(p, 'ghost_bat', ['little_brown'], 1) as unknown as Record<string, unknown> & { deck: { upgraded?: boolean; mod?: string }[] };
+    run.deck[0].upgraded = true;
+    run.relics = ['fangs', 'blood_pact'];
+    p.run = run as never;
+    saveProfile(p);
+    const q = loadProfile();
+    expect(q.run!.deck[0].mod).toBe('sharp');
+    expect(q.run!.charms).toEqual(['fangs']);
+    expect(q.roster.little_brown.skills?.[3]).toBe(0);
+    expect(q.xp).toBeGreaterThan(xp); // second talent refunded
+  });
+
+  it('every event option resolves without error', () => {
+    for (const ev of EVENTS) {
+      for (let i = 0; i < ev.options.length; i++) {
+        const p = starter('ghost_bat');
+        const run = startRun(p, 'ghost_bat', ['little_brown'], 3);
+        const msg = ev.options[i].apply(run, new Rng(5));
+        expect(typeof msg, `${ev.id}/${i}`).toBe('string');
+        expect(run.caveHp, ev.id).toBeGreaterThan(0);
+      }
+    }
   });
 });

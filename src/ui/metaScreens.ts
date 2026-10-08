@@ -3,7 +3,7 @@ import { BATS, BAT_BY_ID, STARTER_COMMONS, STARTER_MATRIARCHS } from '../data/ba
 import { CLANS, CLAN_ORDER, RARITY_COLOR } from '../data/clans';
 import { BOSS_RULE_BY_ID } from '../data/bossRules';
 import { FORMATIONS } from '../data/formations';
-import { GOALS, sagaNode, type SagaNode } from '../data/saga';
+import { GOALS, OBJECTIVES, sagaNode, type SagaNode } from '../data/saga';
 import { BIOME_BY_ID, MODIFIER_BY_ID } from '../data/setup';
 import { MATRIARCH_BY_ID, MATRIARCH_GUANO_EVERY, matriarchGuano } from '../data/matriarchs';
 import { flockOptions, validateSetup } from '../game/deck';
@@ -447,12 +447,12 @@ function nodeCard(node: SagaNode, stars: number) {
       h('span.tag', `${biome?.icon} ${biome?.name}`),
       ...node.modifiers.map((id) => h('span.tag', `${MODIFIER_BY_ID[id]?.icon} ${MODIFIER_BY_ID[id]?.name}`)),
       node.restrict ? h('span.tag', { style: `border-color:${CLANS[node.restrict].color};color:${CLANS[node.restrict].color}` }, `${CLANS[node.restrict].name}s only`) : '',
-      node.objective === 'nursery' ? h('span.tag', '🍼 Protect the nursery') : '',
+      node.objective ? h('span.tag', `${OBJECTIVES[node.objective].icon} ${OBJECTIVES[node.objective].name}`) : '',
       h('span.tag', `Boss: ${boss.icon} ${boss.name}`),
       node.difficulty > 1 ? h('span.tag', `Enemies +${Math.round((node.difficulty - 1) * 100)}%`) : '',
     ),
     h('div.small', '★ Clear the boss', ...node.goals.map((g) => h('div', `★ ${GOALS[g].name}: ${GOALS[g].desc}`))),
-    node.objective === 'nursery' ? h('div.small.muted', 'Nursery: a roost with pups sits mid-field in each regular battle. If it\'s wrecked, the level is lost.') : '',
+    node.objective ? h('div.small.muted', `${OBJECTIVES[node.objective].name}: ${OBJECTIVES[node.objective].desc}`) : '',
   );
 }
 
@@ -471,7 +471,7 @@ registerScreen('saga', (app) => {
       }, h('span.sn-n', n), h('span.sn-stars', open ? starsText(stars) : '🔒')),
       h('div.saga-label', h('b', node.name), h('div.small.muted', [
         node.restrict ? `${CLANS[node.restrict].name}s only` : '',
-        node.objective === 'nursery' ? '🍼 nursery' : '',
+        node.objective ? `${OBJECTIVES[node.objective].icon} ${OBJECTIVES[node.objective].name.toLowerCase()}` : '',
         ...node.modifiers.map((id) => MODIFIER_BY_ID[id]?.icon ?? ''),
         BOSS_RULE_BY_ID[node.bossRule].icon,
       ].filter(Boolean).join(' · '))),

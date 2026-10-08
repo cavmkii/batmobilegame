@@ -39,6 +39,19 @@ export const ENEMIES: EnemyDef[] = [
     fact: 'One of the most powerful owls in the Americas, taking prey as large as skunks, and bats when it gets the chance.',
 
     stats: { hp: 2000, atk: 55, range: 70, rate: 1.6, speed: 22, knockbacks: 5 } },
+  // ---------- Bosses (reuse art, recoloured) ----------
+  { id: 'cuban_boa', name: 'Cuban Boa', sprite: 'snake', size: 2.2, threat: 60, traits: [{ kind: 'aoe' }],
+    tint: { b: '#8a6a4a', B: '#5a4028', y: '#c8a070' },
+    fact: 'In Cuba, large boas gather at cave entrances at dusk and snatch bats from the air as the colony streams out.',
+    stats: { hp: 2600, atk: 70, range: 40, rate: 1.8, speed: 16, knockbacks: 6 } },
+  { id: 'bat_falcon', name: 'Bat Falcon', sprite: 'hawk', size: 1.8, threat: 55, traits: [{ kind: 'knockChance', chance: 0.3 }],
+    tint: { b: '#2a2a3a', B: '#14141e', w: '#f0e8d8', s: '#c06030' },
+    fact: 'A small falcon of Central and South America that hunts at dusk, when bats emerge. Despite the name, it catches more birds and insects than bats.',
+    stats: { hp: 1000, atk: 38, range: 40, rate: 0.8, speed: 50, knockbacks: 4 } },
+  { id: 'colony_cat', name: 'Colony Cat', sprite: 'cat', size: 2, threat: 58, traits: [{ kind: 'aoe' }],
+    tint: { b: '#5a5a62', B: '#3a3a42', w: '#e8e8f0', e: '#ffd040' },
+    fact: 'Cats that learn where a colony roosts come back night after night. In Italian rescue centres, cat attacks were one of the leading causes of injured bats.',
+    stats: { hp: 2000, atk: 60, range: 45, rate: 1.3, speed: 26, knockbacks: 5 } },
 ];
 
 export const ENEMY_BY_ID: Record<string, EnemyDef> = Object.fromEntries(ENEMIES.map((e) => [e.id, e]));
@@ -85,4 +98,13 @@ export const ENCOUNTERS: Encounter[] = [
     pool: [{ enemy: 'moth', weight: 4 }, { enemy: 'tiger_moth', weight: 3 }, { enemy: 'snake', weight: 3 },
       { enemy: 'cat', weight: 2, minNight: 3 }, { enemy: 'barn_owl', weight: 1, minNight: 4 }],
     finale: ['horned_owl'] },
+  { id: 'boa_cave', name: 'Boa Cave', tier: 'boss', minRow: 7, nights: 6, budget: { first: 20, perNight: 15 },
+    pool: [{ enemy: 'snake', weight: 5 }, { enemy: 'spider', weight: 3 }, { enemy: 'moth', weight: 3 }, { enemy: 'beetle', weight: 2, minNight: 3 }],
+    finale: ['cuban_boa'] },
+  { id: 'falcon_cliff', name: 'Falcon Cliff', tier: 'boss', minRow: 7, nights: 6, budget: { first: 20, perNight: 15 },
+    pool: [{ enemy: 'hawk', weight: 2, minNight: 2 }, { enemy: 'tiger_moth', weight: 3 }, { enemy: 'moth', weight: 4 }],
+    finale: ['bat_falcon'] },
+  { id: 'tomcat', name: 'The Colony Cat', tier: 'boss', minRow: 7, nights: 6, budget: { first: 20, perNight: 15 },
+    pool: [{ enemy: 'cat', weight: 2, minNight: 3 }, { enemy: 'moth', weight: 4 }, { enemy: 'snake', weight: 3 }, { enemy: 'beetle', weight: 2 }],
+    finale: ['colony_cat'] },
 ];
