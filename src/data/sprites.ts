@@ -146,6 +146,30 @@ export const BAT_HEADS: Record<string, string[]> = {
   ],
 };
 
+/**
+ * Wings folded around the body, for bats hanging in a roost (left half, 14 rows).
+ * Drawn under the head; the roost renderer flips it so the bat hangs by its feet.
+ */
+export const BAT_FOLDED: string[] = [
+  '........',
+  '........',
+  '........',
+  '........',
+  '........',
+  '.....ooo',
+  '....oWWb',
+  '...oWwwb',
+  '...oWwwb',
+  '...oWwwb',
+  '...oWwwB',
+  '....oWwB',
+  '.....oWo',
+  '......o.',
+];
+
+/** Armour colours added to every palette for roosts at the armour level. */
+export const ARMOR_PALETTE = { a: '#c8d0e0', A: '#7a8296', g: '#e8c040' };
+
 /** Crown overlay for commanders (rows 0–1, half). */
 export const BAT_CROWN = ['.....c.c', '.....ccc'];
 

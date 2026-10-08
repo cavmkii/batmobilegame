@@ -48,6 +48,29 @@ registerScreen('battle', (app) => {
   let sel: Sel = null;
   let speed = 1;
   let note = '';
+  // Press and hold a bat card or a roost to preview which tiles its pattern gives +1.
+  let peek: { batId: string; from: number | null } | null = null;
+  let holdTimer = 0;
+  const HOLD_MS = 350;
+  const startHold = (batId: string, from: number | null) => {
+    clearTimeout(holdTimer);
+    holdTimer = window.setTimeout(() => { peek = { batId, from }; }, HOLD_MS);
+  };
+  const endHold = () => {
+    clearTimeout(holdTimer);
+    peek = null;
+  };
+  window.addEventListener('pointerup', endHold);
+  window.addEventListener('pointercancel', endHold);
+
+  /** Tiles that would get +1 from this bat's pattern: around one roost, or around every roost of that bat. */
+  const peekTiles = (): Set<number> => {
+    const out = new Set<number>();
+    if (!peek) return out;
+    const from = peek.from !== null ? [peek.from] : d.slots.filter((s) => s.roost?.batId === peek!.batId).map((s) => s.idx);
+    for (const f of from) for (const t of d.patternTiles(f, peek.batId)) out.add(t.idx);
+    return out;
+  };
 
   const phaseLabel = h('span.phase');
   const caveFill = h('div');
@@ -82,7 +105,7 @@ registerScreen('battle', (app) => {
         slots.set(t.idx, 'stack');
         for (const p of d.patternTiles(t.idx, batId)) if (p.roost && p.idx !== sel.idx) pattern.add(p.idx);
       }
-      return { slots, pattern, batId };
+      return { slots, pattern, batId, peek: peekTiles() };
     }
     const batId = selectedBat();
     const src = selSource();
@@ -95,7 +118,7 @@ registerScreen('battle', (app) => {
         } else slots.set(s.idx, d.terrainMatches(s.idx, batId) ? 'bonus' : 'ok');
       }
     }
-    return { slots, pattern, batId };
+    return { slots, pattern, batId, peek: peekTiles() };
   };
 
   const describeBat = (batId: string, upgraded: boolean, isCmd: boolean): string => {
@@ -141,6 +164,8 @@ registerScreen('battle', (app) => {
     const offY = (rect.height - VIEW_H * scale) / 2;
     const slot = renderer.slotAt((e.clientX - rect.left - offX) / scale, (e.clientY - rect.top - offY) / scale);
     if (slot < 0) return;
+    const held = d.slots[slot].roost;
+    if (held) startHold(held.batId, slot);
     if (sel?.kind === 'roost' && d.canMerge(sel.idx, slot)) {
       d.merge(sel.idx, slot);
       const ro = d.slots[slot].roost!;
@@ -189,7 +214,7 @@ registerScreen('battle', (app) => {
     const cls = ['hand-card', isCmd ? 'commander' : '', urge ? 'urge' : '', same(sel, o.sel) ? 'selected' : '', o.playable ? '' : 'disabled', kind === 'spell' ? 'spell' : ''].filter(Boolean).join('.');
     return h(`button.${cls}`, {
       style: `--rarity:${isCmd ? 'var(--accent)' : RARITY_COLOR[rarityOf(o.card!)]}`,
-      onpointerdown: (e: PointerEvent) => { e.preventDefault(); o.onTap(); },
+      onpointerdown: (e: PointerEvent) => { e.preventDefault(); o.onTap(); if (kind === 'bat') startHold(id, null); },
     },
     h('span.cost', cost),
     kind === 'bat' ? batImg(id, 2) : h('div.spell-icon', SPELL_BY_ID[id].icon),
@@ -209,12 +234,14 @@ registerScreen('battle', (app) => {
     caveText.textContent = `${Math.max(0, Math.round(d.cave.hp))}`;
     endBtn.style.display = isDay ? '' : 'none';
     speedBtn.style.display = isDay ? 'none' : '';
-    const k = [d.phase, d.day, d.guano, JSON.stringify(sel), d.commander.inPlay, d.commander.casts,
+    const k = [d.phase, d.day, d.guano, JSON.stringify(peek), JSON.stringify(sel), d.commander.inPlay, d.commander.casts,
       d.pool.map((c) => c?.uid ?? '-').join(','), d.spells.map((c) => c.uid).join(','), note,
       d.slots.map((s) => (s.roost ? `${s.roost.batId}${s.roost.level}` : 0)).join('.')].join('|');
     if (k === key) return;
     key = k;
-    guano.replaceChildren(h('span.g-icon', '◆'), h('b', String(d.guano)), h('span.small.muted', ' guano'));
+    guano.replaceChildren(h('span.g-icon', '◆'), h('b', String(d.guano)),
+      h('span.small.muted', isDay ? ` guano · +${d.projectedIncome()} at dawn` : ' guano'));
+    guano.title = 'Dawn income: +2, plus 1 per 2 bats housed in standing roosts, plus 1 per 4 kills';
     piles.textContent = `deck ${d.drawPile.length} · discard ${d.discard.length}`;
     refreshBtn.textContent = `↻ ${d.refreshCost}`;
     refreshBtn.disabled = !d.canRefresh();
@@ -240,6 +267,15 @@ registerScreen('battle', (app) => {
     );
 
     let text = note;
+    if (peek) {
+      const name = BAT_BY_ID[peek.batId].name;
+      const n = peekTiles().size;
+      text = n
+        ? `${name}: merging ${peek.from !== null ? 'this roost' : 'its roost'} also gives +1 to the highlighted tiles (any roost standing there).`
+        : peek.from === null
+          ? `${name}: no ${name} roost on the field yet. Its pattern: ${BAT_BY_ID[peek.batId].pattern.length ? 'see the grid on the card' : 'none'}.`
+          : `${name}: this roost's pattern doesn't reach any tile from here.`;
+    }
     if (!text && sel) {
       if (sel.kind === 'cmd') text = describeBat(d.commander.bp.batId, false, true);
       else if (sel.kind === 'pool') {
@@ -256,7 +292,7 @@ registerScreen('battle', (app) => {
       text = isDay
         ? d.day === 1
           ? `Tonight's enemies are shown at the top. Start with your commander (gold card), placed in a column they'll come down. Two roosts of the same bat and level merge into one a level higher: tap one, then the other. ↻ rerolls the pool for ${d.refreshCost} guano.`
-          : `Dawn: +${d.lastIncome} guano. Tonight: ${tonightSummary(d)}.`
+          : `Dawn: +${d.lastIncome} guano (${d.lastIncomeParts.base} base, ${d.lastIncomeParts.roosts} from roosts, ${d.lastIncomeParts.kills} from kills${d.lastIncomeParts.relic ? `, ${d.lastIncomeParts.relic} relic` : ''}). Tonight: ${tonightSummary(d)}.`
         : 'Bats fly out on their own. Spells are instants: tap one twice to cast.';
     }
     info.textContent = text;
@@ -292,7 +328,11 @@ registerScreen('battle', (app) => {
     raf = requestAnimationFrame(loop);
   };
   raf = requestAnimationFrame(loop);
-  app.onLeave = () => cancelAnimationFrame(raf);
+  app.onLeave = () => {
+    cancelAnimationFrame(raf);
+    window.removeEventListener('pointerup', endHold);
+    window.removeEventListener('pointercancel', endHold);
+  };
 
   const showResult = () => {
     const won = d.phase === 'won';

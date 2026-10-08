@@ -56,7 +56,7 @@ export const BATS: BatDef[] = [
   // ---------- Insectivore ----------
   {
     id: 'little_brown', name: 'Little Brown Bat', species: 'Myotis lucifugus', clans: ['INS'], rarity: 'common',
-    cost: 2, pattern: [[0, -1]], roost: { hp: 100, count: 4, respawn: 3 }, stats: { hp: 50, atk: 14, range: 25, rate: 0.6, speed: 70, knockbacks: 1 },
+    cost: 2, pattern: [[0, -1]], roost: { hp: 100, count: 4, respawn: 3, batch: 2 }, stats: { hp: 50, atk: 14, range: 25, rate: 0.6, speed: 70, knockbacks: 1 },
     traits: [],
     evolved: { name: 'Lucifer Myotis', trait: { kind: 'swarm', count: 6 } }, talents: [fast(25), atk(20)],
     sprite: { template: 'micro', palette: pal('#8a6040', '#6a4630', '#4a3a30', '#2a2018'), size: 0.75 },
@@ -166,7 +166,7 @@ export const BATS: BatDef[] = [
   },
   {
     id: 'ghost_bat', name: 'Ghost Bat', species: 'Macroderma gigas', clans: ['SAN', 'INS'], rarity: 'legendary', commander: true,
-    cost: 4, pattern: [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]], roost: { hp: 350, count: 1, respawn: 14 }, stats: { hp: 450, atk: 42, range: 40, rate: 1.0, speed: 60, knockbacks: 3 },
+    cost: 4, pattern: [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]], roost: { hp: 350, count: 1, respawn: 14 }, stats: { hp: 450, atk: 34, range: 40, rate: 1.0, speed: 60, knockbacks: 3 },
     traits: [{ kind: 'lifesteal', pct: 25 }, { kind: 'aoe' }],
     evolved: { name: 'Pale Tyrant', trait: { kind: 'knockChance', chance: 0.25 } }, talents: [atk(25), fast(20)],
     sprite: { template: 'micro', palette: pal('#e8e4ec', '#b8b0c4', '#d8d0e0', '#8a80a0', { e: '#ff4060' }), size: 1.4, crown: true },

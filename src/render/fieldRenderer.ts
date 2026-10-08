@@ -20,6 +20,8 @@ export interface Highlight {
   slots: Map<number, 'ok' | 'bonus' | 'stack' | 'from'>;
   /** Tiles a stack would also level through the bat's pattern. */
   pattern: Set<number>;
+  /** Press-and-hold preview: tiles that would get +1. */
+  peek: Set<number>;
   batId: string | null;
 }
 
@@ -95,6 +97,19 @@ export class FieldRenderer {
         g.globalAlpha = 1;
       }
       if (s.roost) this.drawRoost(s.roost, sx, sy, x0, y0, w, h);
+      if (hl.peek.has(s.idx)) {
+        g.fillStyle = 'rgba(255,225,74,0.28)';
+        g.fillRect(x0, y0, w, h);
+        g.strokeStyle = '#ffe14a';
+        g.lineWidth = 2;
+        g.strokeRect(x0 + 1, y0 + 1, w - 2, h - 2);
+        g.fillStyle = '#000';
+        g.font = 'bold 13px monospace';
+        g.textAlign = 'center';
+        g.fillText('+1', sx + 1, sy + 6);
+        g.fillStyle = '#ffe14a';
+        g.fillText('+1', sx, sy + 5);
+      }
       if (hl.pattern.has(s.idx)) {
         g.fillStyle = 'rgba(120,200,255,0.18)';
         g.fillRect(x0, y0, w, h);
@@ -132,7 +147,8 @@ export class FieldRenderer {
     g.fillStyle = '#6a4a30';
     g.fillRect(x0 + 4, y0 + 6, w - 8, 1);
     // Roosting bats hang upside down by day; at night the tile shows an empty perch with a marker.
-    const img = batSprite(r.batId, 0, 0.8);
+    // Roosting bats hang with their wings folded; armour shows from the armour level.
+    const img = batSprite(r.batId, 0, 0.8, { folded: true, armored: r.level >= BALANCE.roostLevel.armorLevel });
     if (r.ruined) {
       // Wrecked: broken perch and rubble until dawn.
       g.fillStyle = '#2a2030';
@@ -184,9 +200,10 @@ export class FieldRenderer {
     g.font = 'bold 10px monospace';
     g.textAlign = 'right';
     g.fillStyle = '#000';
-    g.fillText(mega ? 'MEGA' : `L${r.level}`, x0 + w - 1, y0 + 20);
+    const label = mega ? `M${r.level}` : `L${r.level}`;
+    g.fillText(label, x0 + w - 1, y0 + 20);
     g.fillStyle = mega ? '#ff9a3d' : r.level >= 5 ? '#ffe14a' : '#e8e0f8';
-    g.fillText(mega ? 'MEGA' : `L${r.level}`, x0 + w - 2, y0 + 19);
+    g.fillText(label, x0 + w - 2, y0 + 19);
     if (r.isCommander) {
       g.fillStyle = '#ffc23d';
       g.textAlign = 'left';
@@ -254,7 +271,7 @@ export class FieldRenderer {
     let img: HTMLCanvasElement;
     if (u.side === 'bat') {
       const t = d.clock + u.id * 0.37;
-      img = batSprite(u.defId, (Math.floor(t * 7) % 2) as 0 | 1, u.mega ? 1.7 : 0.85);
+      img = batSprite(u.defId, (Math.floor(t * 7) % 2) as 0 | 1, u.mega ? 1.7 : 0.85, { armored: u.armored });
       sy += Math.sin(t * 6) * 2;
     } else {
       img = enemySprite(u.defId, u.sinceAttack < 0.06, 0.9);

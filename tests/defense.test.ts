@@ -215,9 +215,11 @@ describe('roost levels', () => {
     const i = d.pool.findIndex((c) => c?.id === 'little_brown');
     d.place(i, 7);
     const r = d.slots[7].roost!;
-    r.level = BALANCE.roostLevel.max;
+    r.level = BALANCE.roostLevel.megaLevel;
     d.endDay();
     const mine = () => d.units.filter((u) => u.side === 'bat' && u.home === 7 && !u.dead);
+    expect(mine().length).toBe(0); // nothing out at dusk: the cooldown runs first
+    for (let k = 0; k < 60 * (d.respawnTime(r) + 0.1); k++) d.step(1 / 60);
     expect(mine().length).toBe(1);
     expect(mine()[0].mega).toBe(true);
     expect(mine()[0].maxHp).toBeGreaterThan(BAT_BY_ID.little_brown.stats.hp * BAT_BY_ID.little_brown.roost.count * 2);
@@ -364,4 +366,62 @@ describe('balance smoke', () => {
       expect(rows.length).toBe(ENCOUNTERS.length);
     }, 120_000);
   }
+});
+
+describe('night pacing and economy', () => {
+  it('releases bats one cooldown at a time, in batches for swarm roosts', () => {
+    const d = new Defense(cfg({ deck: deckOf('little_brown', 'common_vampire'), caveHp: 1e9, caveMax: 1e9 }));
+    d.guano = 99;
+    d.place(d.pool.findIndex((c) => c?.id === 'little_brown'), 7);
+    d.place(d.pool.findIndex((c) => c?.id === 'common_vampire'), 8);
+    d.endDay();
+    const out = (slot: number) => d.units.filter((u) => u.side === 'bat' && u.home === slot && !u.dead).length;
+    expect(out(7) + out(8)).toBe(0);
+    for (let k = 0; k < 60 * (BAT_BY_ID.little_brown.roost.respawn + 0.1); k++) d.step(1 / 60);
+    expect(out(7)).toBe(2); // Little Brown Bats come in pairs
+    expect(out(8)).toBe(0); // vampire cooldown is longer
+    for (let k = 0; k < 60 * (BAT_BY_ID.common_vampire.roost.respawn - BAT_BY_ID.little_brown.roost.respawn); k++) d.step(1 / 60);
+    expect(out(8)).toBe(1);
+  });
+
+  it('waits a moment after the last enemy falls before dawn', () => {
+    const d = new Defense(cfg({ caveHp: 1e9, caveMax: 1e9 }));
+    d.endDay();
+    (d as unknown as { spawnQueue: unknown[] }).spawnQueue = [];
+    d.units = [];
+    d.step(BALANCE.night.dawnDelay / 2);
+    expect(d.phase).toBe('night');
+    d.step(BALANCE.night.dawnDelay);
+    expect(d.phase).toBe('day');
+  });
+
+  it('pays dawn income from housed bats, so building roosts grows it', () => {
+    const d = new Defense(cfg({ deck: deckOf('little_brown', 'common_vampire'), caveHp: 1e9, caveMax: 1e9 }));
+    const bare = d.projectedIncome();
+    expect(bare).toBe(BALANCE.economy.perDawn);
+    d.guano = 99;
+    d.place(d.pool.findIndex((c) => c?.id === 'little_brown'), 7); // 4 bats -> +2
+    expect(d.projectedIncome()).toBe(bare + Math.floor(BAT_BY_ID.little_brown.roost.count / BALANCE.economy.batsPerGuano));
+  });
+
+  it('keeps levelling past 10 with stats still rising', () => {
+    const d = new Defense(cfg({ deck: deckOf('little_brown', 'fledgling'), caveHp: 1e9, caveMax: 1e9 }));
+    d.guano = 99;
+    d.place(d.pool.findIndex((c) => c?.id === 'little_brown'), 7);
+    d.place(d.pool.findIndex((c) => c?.id === 'fledgling'), 8);
+    d.slots[7].roost!.level = 10;
+    d.slots[8].roost!.level = 10;
+    d.slots[8].roost!.batId = 'little_brown';
+    d.slots[8].roost!.bp = d.slots[7].roost!.bp;
+    expect(d.merge(8, 7)).toBe(true);
+    expect(d.slots[7].roost!.level).toBe(11);
+    const hpAt = (lvl: number) => {
+      d.slots[7].roost!.level = lvl;
+      (d as unknown as { spawnBat(s: unknown, x: number, y: number): void }).spawnBat(d.slots[7], 7.5, 7);
+      return d.units[d.units.length - 1].maxHp;
+    };
+    d.endDay();
+    expect(hpAt(12)).toBeGreaterThan(hpAt(10));
+    expect(d.units[d.units.length - 1].armored).toBe(true);
+  });
 });

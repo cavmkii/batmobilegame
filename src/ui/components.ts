@@ -40,7 +40,7 @@ export function cardFace(card: Pick<Card, 'kind' | 'id' | 'upgraded'>, owned?: O
     const lvl = owned ? `Lv ${owned.level}${owned.plus ? `+${owned.plus}` : ''}` : 'Lv 1 (unowned)';
     sub = def.basic ? 'Basic' : lvl;
     lines = [
-      `Roost ❤${fmt(bp.roost.hp)} · ${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''} out, +1 every ${bp.roost.respawn}s`,
+      `Roost ❤${fmt(bp.roost.hp)} · up to ${bp.roost.count} bat${bp.roost.count > 1 ? 's' : ''}, +${bp.roost.batch} every ${bp.roost.respawn}s`,
       `Each bat ❤${fmt(bp.stats.hp)} ⚔${fmt(bp.stats.atk)} ${bp.stats.range >= 100 ? 'ranged' : 'melee'}`,
       ...bp.traits.map(describeTrait),
     ];
@@ -79,7 +79,7 @@ export function patternGrid(batId: string, size: 'sm' | 'xs' = 'sm') {
       cells.push(h(`span${c === 0 && r === 0 ? '.me' : on ? '.on' : ''}`));
     }
   }
-  return h(`div.pattern.${size}`, { style: `grid-template-columns: repeat(${reach * 2 + 1}, 1fr)`, title: 'Stacking also levels these tiles' }, ...cells);
+  return h(`div.pattern.${size}`, { style: `grid-template-columns: repeat(${reach * 2 + 1}, 1fr)`, title: 'Merging this roost also gives +1 to these tiles (hold a card to see them on the field)' }, ...cells);
 }
 
 export function relicChip(id: string) {
