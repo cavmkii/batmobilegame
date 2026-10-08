@@ -223,7 +223,7 @@ mostly Fledglings. The commander was one extra roost. v0.4 replaces all of it.
   spells, the rest new species by rarity. The card shows "In deck: N" or "New". The choice is
   between depth (more merges) and breadth (new patterns and clans). Card removal in the shop
   matters now: thinning the deck raises merge odds.
-- **Clan bonuses** replace identity (see §4).
+- Formations (§0) reward committing to a clan through Lines and Clusters.
 
 ## 4. Clans (real bat diets)
 
@@ -238,19 +238,7 @@ mostly Fledglings. The commander was one extra roost. v0.4 replaces all of it.
 Vampire bats really do regurgitate blood meals to roost-mates who failed to
 feed; that's where the Sanguivore heal-on-death mechanic comes from.
 
-**Clan bonuses.** Each clan sums the levels of its standing roosts on the field (dual-clan
-bats count for both). At 3 / 6 / 10 it unlocks a tier. Bonuses lock in at dusk.
-Counting levels, not roosts, means merging tall doesn't cost you the bonus.
-
-| Clan | Bonus (tier 1 / 2 / 3) |
-|---|---|
-| Frugivore | at dawn every roost heals 20 / 40 / 70% |
-| Insectivore | insectivores attack 15 / 30 / 50% faster |
-| Sanguivore | sanguivores +10 / 20 / 35% lifesteal |
-| Piscivore | piscivores +15 / 30 / 50% damage |
-| Nectarivore | +1 / 2 / 3 guano each dawn |
-
-The Kin Call relic (which replaced Blood Pact) adds 2 levels to every clan on the field.
+**Clan bonuses** (v0.4–0.5) were replaced by formations in v0.6 (see §0).
 
 Starter matriarchs: **Great Flying Fox**, **Ghost Bat**, **Spectral Bat**. Greater Noctule is
 a legendary summon.
