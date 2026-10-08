@@ -16,7 +16,7 @@ const pal = (b: string, B: string, w: string, W: string, extra: Partial<Palette>
 const hp = (pct: number): Talent => ({ name: 'Thick Fur', desc: `+${pct}% HP`, effect: { kind: 'hpPct', pct } });
 const atk = (pct: number): Talent => ({ name: 'Sharp Teeth', desc: `+${pct}% attack`, effect: { kind: 'atkPct', pct } });
 const fast = (pct: number): Talent => ({ name: 'Tailwind', desc: `+${pct}% move speed`, effect: { kind: 'speedPct', pct } });
-const cheap: Talent = { name: 'Light Sleeper', desc: '-1 energy cost', effect: { kind: 'cost', delta: -1 } };
+const cheap: Talent = { name: 'Light Sleeper', desc: '-1 guano cost', effect: { kind: 'cost', delta: -1 } };
 
 export const BATS: BatDef[] = [
   // ---------- Basic ----------
@@ -180,8 +180,159 @@ export const BATS: BatDef[] = [
     sprite: { template: 'bulldog', palette: pal('#5a3a4a', '#3a2230', '#4a2a50', '#22102a', { e: '#80ffd0' }), size: 1.5, crown: true },
     fact: 'The largest bat in the Americas. Pairs roost together and share food with their young.',
   },
+
+  // ================= Field guide expansion =================
+
+  // ---------- Insectivore: North America ----------
+  {
+    id: 'tricolored', name: 'Tricolored Bat', species: 'Perimyotis subflavus', clans: ['INS'], rarity: 'rare',
+    cost: 2, pattern: [[-1, -1], [1, 1]], roost: { hp: 90, count: 3, respawn: 4 },
+    stats: { hp: 45, atk: 12, range: 25, rate: 0.6, speed: 65, knockbacks: 1 }, traits: [],
+    evolved: { name: 'Banded Pipistrelle', trait: { kind: 'hasteAura', pct: 10, radius: 100 } }, talents: [fast(20), atk(20)],
+    sprite: { template: 'vesper', palette: pal('#c8964a', '#9a6e34', '#6a4a3a', '#3a2818'), size: 0.76 },
+    fact: 'Each hair is banded dark, light, then dark, which gives it its name; it used to be called the eastern pipistrelle. White-nose syndrome has devastated its populations.',
+  },
+  {
+    id: 'northern_long_eared', name: 'Northern Long-eared Bat', species: 'Myotis septentrionalis', clans: ['INS'], rarity: 'rare',
+    cost: 3, pattern: [[0, -1], [-1, 0]], roost: { hp: 110, count: 2, respawn: 6 },
+    stats: { hp: 70, atk: 18, range: 110, rate: 0.9, speed: 45, knockbacks: 2 }, traits: [{ kind: 'multiHit', targets: 2 }],
+    evolved: { name: 'Bark Gleaner', trait: { kind: 'multiHit', targets: 3 } }, talents: [atk(20), cheap],
+    sprite: { template: 'micro', palette: pal('#8a6a4a', '#6a4e34', '#5a4a3e', '#30241a'), size: 0.8 },
+    fact: 'Gleans insects off leaves and bark as well as catching them in flight. Listed as endangered in the US in 2023, largely because of white-nose syndrome.',
+  },
+  {
+    id: 'indiana', name: 'Indiana Bat', species: 'Myotis sodalis', clans: ['INS'], rarity: 'epic',
+    cost: 4, pattern: [[0, -1], [-1, 0], [1, 0], [0, 1]], roost: { hp: 160, count: 3, respawn: 5 },
+    stats: { hp: 80, atk: 16, range: 30, rate: 0.7, speed: 55, knockbacks: 2 }, traits: [{ kind: 'hasteAura', pct: 15, radius: 100 }],
+    evolved: { name: 'Cluster Keeper', trait: { kind: 'hasteAura', pct: 25, radius: 120 } }, talents: [hp(25), cheap],
+    sprite: { template: 'vesper', palette: pal('#7a6a6a', '#5a4c4e', '#4e4448', '#2a2226', { n: '#d0a0a0' }), size: 0.75 },
+    fact: 'Hibernates in dense clusters of hundreds of bats per square foot of cave ceiling. On the US endangered species list since 1967.',
+  },
+  {
+    id: 'hoary', name: 'Hoary Bat', species: 'Lasiurus cinereus', clans: ['INS'], rarity: 'rare',
+    cost: 3, pattern: [[-2, 0], [2, 0]], roost: { hp: 140, count: 1, respawn: 7 },
+    stats: { hp: 160, atk: 38, range: 40, rate: 0.9, speed: 90, knockbacks: 2 }, traits: [{ kind: 'knockChance', chance: 0.2 }],
+    evolved: { name: 'Frost Wanderer', trait: { kind: 'knockChance', chance: 0.3 } }, talents: [atk(25), fast(20)],
+    sprite: { template: 'vesper', palette: pal('#c8b8a0', '#8a7a64', '#6a5a48', '#3a2e22', { n: '#f0ece0' }), size: 1.15 },
+    fact: 'A solitary tree-rooster with frosted, white-tipped fur that migrates long distances. A close relative, the Hawaiian hoary bat, is Hawaii\'s only native land mammal.',
+  },
+  {
+    id: 'big_brown', name: 'Big Brown Bat', species: 'Eptesicus fuscus', clans: ['INS'], rarity: 'common',
+    cost: 2, pattern: [[0, 1]], roost: { hp: 150, count: 2, respawn: 6 },
+    stats: { hp: 120, atk: 18, range: 30, rate: 1.0, speed: 45, knockbacks: 2 }, traits: [],
+    evolved: { name: 'Beetle Crusher', trait: { kind: 'knockChance', chance: 0.15 } }, talents: [hp(20), atk(20)],
+    sprite: { template: 'vesper', palette: pal('#8a5a32', '#64401e', '#4a3426', '#281a10'), size: 0.95 },
+    fact: 'Strong jaws let it crunch hard-shelled beetles. It has fared better against white-nose syndrome than most cave-hibernating bats, and often hibernates in buildings.',
+  },
+  {
+    id: 'eastern_red', name: 'Eastern Red Bat', species: 'Lasiurus borealis', clans: ['INS'], rarity: 'common',
+    cost: 2, pattern: [[-1, 0]], roost: { hp: 90, count: 3, respawn: 5 },
+    stats: { hp: 60, atk: 14, range: 25, rate: 0.7, speed: 60, knockbacks: 1 }, traits: [],
+    evolved: { name: 'Autumn Leaf', trait: { kind: 'swarm', count: 4 } }, talents: [fast(20), cheap],
+    sprite: { template: 'vesper', palette: pal('#d0602a', '#a04018', '#7a3a20', '#40180a', { n: '#f0d0b0' }), size: 0.8 },
+    fact: 'Roosts alone in foliage, hanging like a dead leaf. Unlike most bats, which raise one pup a year, a female often raises three or four at once.',
+  },
+  {
+    id: 'townsends', name: "Townsend's Big-eared Bat", species: 'Corynorhinus townsendii', clans: ['INS'], rarity: 'rare',
+    cost: 3, pattern: [[-1, -1], [1, -1]], roost: { hp: 110, count: 2, respawn: 6 },
+    stats: { hp: 70, atk: 20, range: 120, rate: 1.0, speed: 45, knockbacks: 2 }, traits: [{ kind: 'multiHit', targets: 2 }],
+    evolved: { name: 'Ram-horned Listener' }, talents: [atk(20), hp(20)],
+    sprite: { template: 'micro', palette: pal('#8a7a6a', '#6a5a4c', '#5a4e44', '#2e2620', { n: '#d0a090' }), size: 0.85 },
+    fact: 'Its ears are over an inch long. When it hibernates it curls them back against its head like a ram\'s horns.',
+  },
+  {
+    id: 'pallid', name: 'Pallid Bat', species: 'Antrozous pallidus', clans: ['INS'], rarity: 'epic',
+    cost: 4, pattern: [[-1, 1], [0, 1], [1, 1]], roost: { hp: 220, count: 2, respawn: 9 },
+    stats: { hp: 180, atk: 40, range: 35, rate: 1.2, speed: 40, knockbacks: 3 }, traits: [{ kind: 'aoe' }],
+    evolved: { name: 'Scorpion Eater', trait: { kind: 'lifesteal', pct: 20 } }, talents: [hp(25), atk(20)],
+    sprite: { template: 'micro', palette: pal('#e8d8b0', '#c0a880', '#b09a80', '#6a5a46', { e: '#2a1a10' }), size: 1.05 },
+    fact: 'Hunts on the ground for scorpions and centipedes, finding them by the sound of their footsteps, and appears largely resistant to bark scorpion venom.',
+  },
+
+  // ---------- Frugivore ----------
+  {
+    id: 'jamaican_fruit', name: 'Jamaican Fruit Bat', species: 'Artibeus jamaicensis', clans: ['FRU'], rarity: 'common',
+    cost: 2, pattern: [[1, -1]], roost: { hp: 220, count: 2, respawn: 7 },
+    stats: { hp: 180, atk: 14, range: 30, rate: 1.2, speed: 32, knockbacks: 3 }, traits: [],
+    evolved: { name: 'Fig Courier', trait: { kind: 'healAura', amount: 8, every: 2, radius: 80 } }, talents: [hp(20), cheap],
+    sprite: { template: 'fruit', palette: pal('#7a7068', '#58504a', '#4a4440', '#262220', { n: '#e8e0d0' }), size: 0.95 },
+    fact: 'Carries figs off to a feeding roost to eat them, dropping seeds along the way and spreading fig trees through the forest.',
+  },
+  {
+    id: 'sebas', name: "Seba's Short-tailed Bat", species: 'Carollia perspicillata', clans: ['FRU'], rarity: 'rare',
+    cost: 3, pattern: [[-1, 0], [0, 1]], roost: { hp: 200, count: 3, respawn: 6 },
+    stats: { hp: 120, atk: 12, range: 30, rate: 1.1, speed: 40, knockbacks: 2 }, traits: [{ kind: 'healAura', amount: 10, every: 2, radius: 100 }],
+    evolved: { name: 'Forest Mender' }, talents: [hp(20), cheap],
+    sprite: { template: 'nectar', palette: pal('#6a5040', '#4c382c', '#46382e', '#241a14'), size: 0.85 },
+    fact: 'Favours pioneer shrubs such as pepper plants (Piper), so the seeds it drops help cleared Neotropical forest grow back.',
+  },
+  {
+    id: 'epauletted', name: "Wahlberg's Epauletted Fruit Bat", species: 'Epomophorus wahlbergi', clans: ['FRU'], rarity: 'rare',
+    cost: 3, pattern: [[-1, 0], [1, 0], [0, -1]], roost: { hp: 280, count: 2, respawn: 8 },
+    stats: { hp: 240, atk: 16, range: 35, rate: 1.2, speed: 32, knockbacks: 3 }, traits: [{ kind: 'knockChance', chance: 0.15 }],
+    evolved: { name: 'Courting Drummer' }, talents: [hp(25), atk(20)],
+    sprite: { template: 'fruit', palette: pal('#c8a070', '#9a764c', '#7a5e44', '#3e2c1c', { n: '#ffffff' }), size: 1.1 },
+    fact: 'Males have tufts of white fur on their shoulders, the "epaulettes", which they flare while calling to attract females.',
+  },
+
+  // ---------- Piscivore ----------
+  {
+    id: 'rickett', name: "Rickett's Big-footed Bat", species: 'Myotis pilosus', clans: ['PIS'], rarity: 'rare',
+    cost: 3, pattern: [[0, -1], [0, -2]], roost: { hp: 130, count: 2, respawn: 8 },
+    stats: { hp: 90, atk: 40, range: 170, rate: 1.6, speed: 35, knockbacks: 2 }, traits: [],
+    evolved: { name: 'River Raker', trait: { kind: 'multiHit', targets: 2 } }, talents: [atk(25), cheap],
+    sprite: { template: 'bulldog', palette: pal('#8a7a6a', '#6a5a4c', '#5a5050', '#2a2424'), size: 0.9 },
+    fact: 'One of the few bats known to catch fish, raking them from the water with its oversized feet. It is found mainly in China.',
+  },
+  {
+    id: 'daubentons', name: "Daubenton's Bat", species: 'Myotis daubentonii', clans: ['PIS'], rarity: 'common',
+    cost: 2, pattern: [[1, 0], [1, 1]], roost: { hp: 100, count: 2, respawn: 5 },
+    stats: { hp: 60, atk: 16, range: 120, rate: 1.0, speed: 45, knockbacks: 2 }, traits: [],
+    evolved: { name: 'Canal Skimmer', trait: { kind: 'multiHit', targets: 2 } }, talents: [atk(20), fast(20)],
+    sprite: { template: 'vesper', palette: pal('#9a8a7a', '#6e6052', '#5a5048', '#2e2822', { n: '#e0d8cc' }), size: 0.8 },
+    fact: 'Skims low over ponds and canals, gaffing insects off the water\'s surface with its feet and tail membrane.',
+  },
+
+  // ---------- Nectarivore ----------
+  {
+    id: 'mexican_long_tongued', name: 'Mexican Long-tongued Bat', species: 'Choeronycteris mexicana', clans: ['NEC'], rarity: 'rare',
+    cost: 3, pattern: [[-1, -1], [0, -1], [1, -1]], roost: { hp: 130, count: 3, respawn: 6 },
+    stats: { hp: 90, atk: 9, range: 130, rate: 1.1, speed: 42, knockbacks: 2 }, traits: [{ kind: 'atkAura', pct: 20, radius: 130 }],
+    evolved: { name: 'Night Bloom', trait: { kind: 'atkAura', pct: 30, radius: 140 } }, talents: [hp(20), cheap],
+    sprite: { template: 'nectar', palette: pal('#8a7a7a', '#685a5a', '#5e5058', '#30282c', { n: '#e0a0b0' }), size: 0.85 },
+    fact: 'Its tongue can reach about a third of its body length. It feeds at agave and columnar cactus flowers in Mexico and the US Southwest.',
+  },
+  {
+    id: 'greater_long_nosed', name: 'Greater Long-nosed Bat', species: 'Leptonycteris nivalis', clans: ['NEC'], rarity: 'epic',
+    cost: 4, pattern: [[0, -1], [0, 1], [-1, -1], [1, 1]], roost: { hp: 170, count: 3, respawn: 8 },
+    stats: { hp: 140, atk: 14, range: 150, rate: 1.0, speed: 45, knockbacks: 2 },
+    traits: [{ kind: 'hasteAura', pct: 25, radius: 150 }, { kind: 'healAura', amount: 10, every: 2, radius: 120 }],
+    evolved: { name: 'Agave Pilgrim' }, talents: [hp(25), cheap],
+    sprite: { template: 'nectar', palette: pal('#a08068', '#7a5e4a', '#6a5464', '#3a2a34', { n: '#ffb0d0' }), size: 1.0 },
+    fact: 'Follows the bloom of agaves north each summer. It is listed as endangered in the US.',
+  },
+  {
+    id: 'geoffroys_tailless', name: "Geoffroy's Tailless Bat", species: 'Anoura geoffroyi', clans: ['NEC'], rarity: 'common',
+    cost: 2, pattern: [[1, 1]], roost: { hp: 110, count: 3, respawn: 6 },
+    stats: { hp: 70, atk: 10, range: 110, rate: 1.1, speed: 42, knockbacks: 2 }, traits: [{ kind: 'hasteAura', pct: 15, radius: 110 }],
+    evolved: { name: 'Pollen Dancer', trait: { kind: 'hasteAura', pct: 25, radius: 120 } }, talents: [fast(20), cheap],
+    sprite: { template: 'nectar', palette: pal('#5a4a4a', '#403434', '#4a3a44', '#241c22'), size: 0.85 },
+    fact: 'Has no visible tail and a long snout. Besides nectar it eats pollen and insects.',
+  },
+
+  // ---------- Commander (legendary) ----------
+  {
+    id: 'greater_noctule', name: 'Greater Noctule', species: 'Nyctalus lasiopterus', clans: ['INS', 'PIS'], rarity: 'legendary', commander: true,
+    cost: 5, pattern: [[-1, -1], [0, -1], [1, -1], [-1, 0], [1, 0], [-1, 1], [0, 1], [1, 1]], roost: { hp: 400, count: 1, respawn: 15 },
+    stats: { hp: 420, atk: 60, range: 160, rate: 1.3, speed: 80, knockbacks: 3 },
+    traits: [{ kind: 'multiHit', targets: 2 }, { kind: 'knockChance', chance: 0.2 }],
+    evolved: { name: 'Sky Raptor', trait: { kind: 'multiHit', targets: 3 } }, talents: [atk(25), fast(20)],
+    sprite: { template: 'vesper', palette: pal('#b07040', '#804a24', '#6a4a36', '#341e10'), size: 1.45, crown: true },
+    fact: "Europe's largest bat. Part of its diet is songbirds, which it catches in flight during their night-time migrations.",
+  },
 ];
 
 export const BAT_BY_ID: Record<string, BatDef> = Object.fromEntries(BATS.map((b) => [b.id, b]));
 export const STARTER_COMMANDERS = ['flying_fox', 'ghost_bat', 'spectral_bat'];
-export const STARTER_COMMONS = BATS.filter((b) => b.rarity === 'common' && !b.basic).map((b) => b.id);
+/** One common from each clan for a new player. Explicit, so adding commons doesn't change the starter gift. */
+export const STARTER_COMMONS = ['egyptian_fruit', 'little_brown', 'common_vampire', 'lesser_bulldog', 'pallas_tongue'];

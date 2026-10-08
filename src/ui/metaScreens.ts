@@ -9,6 +9,8 @@ import {
 } from '../game/progression';
 import { Rng, newSeed } from '../game/rng';
 import { startRun } from '../game/run';
+import { COLLECTABLE, MILESTONES, REGION, REGION_ICON, REGION_SETS, REGIONS, STATUS, regionMembers, type Reward } from '../data/fieldguide';
+import { claim, claimable, ownedSet } from '../game/collection';
 import { registerScreen, type App } from './app';
 import { batImg, clanPips, currencyBar, fmt, header, patternGrid } from './components';
 import { h, toast } from './dom';
@@ -50,7 +52,7 @@ registerScreen('home', (app) => {
     h('div.hero', h('h1.title', 'BATMOBILE'), wallet(app)),
     h('div.menu',
       h('button.big.primary', { onclick: () => app.go({ name: p.run ? 'map' : 'prep' }) }, p.run ? 'Continue run' : 'Start a run'),
-      h('button.big', { onclick: () => app.go({ name: 'roster' }) }, `Roster  ${owned}/${total}`),
+      h('button.big', { onclick: () => app.go({ name: 'roster' }) }, `Field Guide  ${owned}/${total}`, claimable(p).length ? h('span.badge', claimable(p).length) : null),
       h('button.big', { onclick: () => app.go({ name: 'summon' }) }, 'Summon', p.pendingDupes.length ? h('span.badge', p.pendingDupes.length) : null),
     ),
     h('div.stats.muted', `Runs ${p.stats.runs} · Clears ${p.stats.clears} · Best depth ${p.stats.bestRow}/${BALANCE.run.rows} · Pulls ${p.stats.pulls}`),
@@ -67,28 +69,67 @@ registerScreen('home', (app) => {
 
 // ---------------- Roster ----------------
 
+let guideView: 'clan' | 'region' = 'clan';
+
 registerScreen('roster', (app) => {
   const p = app.profile;
-  const groups = [...CLAN_ORDER.map((c) => ({ title: CLANS[c].name, color: CLANS[c].color, bats: BATS.filter((b) => !b.commander && !b.basic && b.clans[0] === c) })),
-    { title: 'Commanders', color: RARITY_COLOR.legendary, bats: BATS.filter((b) => b.commander) }];
+  const owned = ownedSet(p);
+  const found = COLLECTABLE.filter((id) => owned.has(id)).length;
+  const pct = Math.round((found / COLLECTABLE.length) * 100);
+
+  const cell = (b: (typeof BATS)[number]) => {
+    const o = p.roster[b.id];
+    const up = o && (canLevelUp(b, o, p.xp) || canEvolve(b, o, p.xp));
+    const where = REGION[b.id];
+    return h(`button.roster-cell.r-${b.rarity}${o ? '' : '.locked'}`, {
+      style: `--rarity:${RARITY_COLOR[b.rarity]}`,
+      onclick: () => (o ? app.go({ name: 'bat', id: b.id }) : toast(`Not yet found · ${b.rarity}${where ? ` · ${REGION_ICON[where]} ${where}` : ''}`)),
+    },
+    batImg(b.id, 2),
+    h('div.rc-name', o ? displayName(b, o) : '???'),
+    o ? h('div.rc-lvl', `Lv ${o.level}${o.plus ? `+${o.plus}` : ''}${o.evolved ? ' ★' : ''}`) : h('div.rc-lvl', `${where ? REGION_ICON[where] + ' ' : ''}${b.rarity}`),
+    up ? h('span.dot') : null,
+    );
+  };
+
+  const rewardRow = (r: Reward) => {
+    const [have, need] = r.progress(owned);
+    const done = p.claimed.includes(r.id);
+    const ready = !done && r.needs(owned);
+    return h(`div.reward-row${done ? '.done' : ''}`,
+      h('div', h('b', r.label), h('div.small.muted', `🪲${fmt(r.glow)}  ✨${fmt(r.xp)}`)),
+      done ? h('span.tag', 'Claimed')
+        : ready ? h('button.primary.small', { onclick: () => { claim(p, r.id); app.save(); toast(`+${fmt(r.glow)} Glowbugs, +${fmt(r.xp)} XP`); app.refresh(); } }, 'Claim')
+          : h('span.small.muted', `${have}/${need}`),
+    );
+  };
+
+  const nextMilestone = MILESTONES.find((m) => !p.claimed.includes(m.id) && !m.needs(owned));
+  const ready = claimable(p);
+
+  const sections = guideView === 'clan'
+    ? [...CLAN_ORDER.map((c) => ({ title: CLANS[c].name, color: CLANS[c].color, ids: BATS.filter((b) => !b.commander && !b.basic && b.clans[0] === c).map((b) => b.id), set: null as Reward | null })),
+      { title: 'Commanders', color: RARITY_COLOR.legendary, ids: BATS.filter((b) => b.commander).map((b) => b.id), set: null as Reward | null }]
+    : REGIONS.map((r, i) => ({ title: `${REGION_ICON[r]} ${r}`, color: 'var(--text)', ids: regionMembers(r), set: REGION_SETS[i] as Reward | null }));
+
   return h('div.screen',
-    header('Roster', () => app.go({ name: 'home' }), wallet(app)),
-    ...groups.map((g) => h('section',
-      h('h2', { style: `color:${g.color}` }, g.title),
-      h('div.roster-grid', ...g.bats.map((b) => {
-        const o = p.roster[b.id];
-        const up = o && (canLevelUp(b, o, p.xp) || canEvolve(b, o, p.xp));
-        return h(`button.roster-cell.r-${b.rarity}${o ? '' : '.locked'}`, {
-          style: `--rarity:${RARITY_COLOR[b.rarity]}`,
-          onclick: () => (o ? app.go({ name: 'bat', id: b.id }) : toast(`${b.name}: not yet summoned`)),
-        },
-        batImg(b.id, 2),
-        h('div.rc-name', o ? displayName(b, o) : '???'),
-        o ? h('div.rc-lvl', `Lv ${o.level}${o.plus ? `+${o.plus}` : ''}${o.evolved ? ' ★' : ''}`) : h('div.rc-lvl', b.rarity),
-        up ? h('span.dot') : null,
-        );
-      })),
+    header('Field Guide', () => app.go({ name: 'home' }), wallet(app)),
+    h('div.guide-summary',
+      h('div.guide-count', h('b', `${found}`), ` / ${COLLECTABLE.length} species`, h('span.muted', ` · ${pct}%`)),
+      h('div.hpbar', h('div', { style: `width:${pct}%` })),
+      nextMilestone ? h('div.small.muted', `Next: ${nextMilestone.label} (🪲${fmt(nextMilestone.glow)})`) : null,
+    ),
+    ready.length ? h('section', h('h2', 'Rewards ready'), ...ready.map(rewardRow)) : null,
+    h('div.seg',
+      h(`button${guideView === 'clan' ? '.on' : ''}`, { onclick: () => { guideView = 'clan'; app.refresh(); } }, 'By clan'),
+      h(`button${guideView === 'region' ? '.on' : ''}`, { onclick: () => { guideView = 'region'; app.refresh(); } }, 'By region'),
+    ),
+    ...sections.map((g) => h('section',
+      h('h2', { style: `color:${g.color}` }, g.title, h('span.muted.small', `  ${g.ids.filter((id) => owned.has(id)).length}/${g.ids.length}`)),
+      g.set ? rewardRow(g.set) : null,
+      h('div.roster-grid', ...g.ids.map((id) => cell(BAT_BY_ID[id]))),
     )),
+    h('section', h('h2', 'Milestones'), ...MILESTONES.map(rewardRow)),
   );
 });
 
@@ -111,7 +152,9 @@ registerScreen('bat', (app, s) => {
     h('div.detail',
       h('div.detail-art', { style: `--rarity:${RARITY_COLOR[def.rarity]}` }, batImg(s.id, 4)),
       h('div',
-        h('div.muted', def.species, ' · ', h('span', { style: `color:${RARITY_COLOR[def.rarity]}` }, def.rarity)),
+        h('div.muted', h('i', def.species), ' · ', h('span', { style: `color:${RARITY_COLOR[def.rarity]}` }, def.rarity)),
+        REGION[s.id] ? h('div.small', `${REGION_ICON[REGION[s.id]]} ${REGION[s.id]}`) : null,
+        STATUS[s.id] ? h('div.small.status', `⚠ ${STATUS[s.id]}`) : null,
         h('div', clanPips(def.clans), ' ', def.clans.map((c) => CLANS[c].name).join(' / ') || 'Colorless'),
         def.commander ? h('div.tag', 'Commander') : null,
         h('div.big-level', `Lv ${o.level}`, o.plus ? h('span.plus', `+${o.plus}`) : null, h('span.muted', ` / ${levelCap(o)}`)),
@@ -121,7 +164,7 @@ registerScreen('bat', (app, s) => {
       h('tr', h('td', 'Cost'), h('td', bp.cost), h('td', 'HP'), h('td', fmt(bp.stats.hp))),
       h('tr', h('td', 'Attack'), h('td', fmt(bp.stats.atk)), h('td', 'Range'), h('td', bp.stats.range)),
       h('tr', h('td', 'Rate'), h('td', `${bp.stats.rate}s`), h('td', 'Speed'), h('td', Math.round(bp.stats.speed))),
-      h('tr', h('td', 'Roost HP'), h('td', fmt(bp.roost.hp)), h('td', 'Bats / night'), h('td', bp.roost.count)),
+      h('tr', h('td', 'Roost HP'), h('td', fmt(bp.roost.hp)), h('td', 'Max bats'), h('td', bp.roost.count)),
       h('tr', h('td', 'Refill'), h('td', `${bp.roost.respawn}s`), h('td', 'Spread'), h('td', patternGrid(s.id, 'xs'))),
     ),
     bp.traits.length ? h('ul.traits', ...bp.traits.map((t) => h('li', describeTrait(t)))) : null,

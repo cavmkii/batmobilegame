@@ -42,7 +42,7 @@ export interface Talent {
 }
 
 export interface SpriteSpec {
-  template: 'fruit' | 'micro' | 'vampire' | 'bulldog' | 'nectar' | 'fledgling';
+  template: 'fruit' | 'micro' | 'vampire' | 'bulldog' | 'nectar' | 'fledgling' | 'vesper';
   palette: Palette;
   /** Pixel scale multiplier relative to a normal bat. */
   size: number;
