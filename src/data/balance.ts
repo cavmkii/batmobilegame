@@ -11,6 +11,8 @@ export const BALANCE = {
    * Roosts are the economy: early on it's a grind; investing in bats raises income, spells and rerolls don't.
    */
   economy: { startGuano: 6, perDawn: 2, batsPerGuano: 2, killsPerGuano: 4, refreshCost: 2, poolSize: 2, spellHandMax: 3 },
+  /** Unspent guano earns interest at dawn: +1 per `per`, up to `cap` (Balatro-style). */
+  interest: { per: 5, cap: 3 },
   /**
    * Roost levels. Two roosts of the same bat and the same level merge into one a level higher
    * (a pool card counts as a level-1 roost). Each level adds a bat (up to maxExtraBats) and

@@ -144,11 +144,13 @@ export type RelicEffect =
   | { kind: 'speedPct'; pct: number }
   | { kind: 'hpPct'; pct: number }
   | { kind: 'atkPct'; pct: number }
-  | { kind: 'synergyBonus'; amount: number }
+  | { kind: 'formationBonus'; amount: number }
   | { kind: 'healAfterBattle'; amount: number }
   | { kind: 'startLevel'; amount: number };
 
 export type TerrainId = 'pond' | 'fig' | 'cactus' | 'lamp' | 'pen';
+
+export type CardMod = 'foil' | 'wild' | 'echo' | 'glass';
 
 /** A card in a run deck. */
 export interface Card {
@@ -156,4 +158,6 @@ export interface Card {
   kind: 'bat' | 'spell';
   id: string;
   upgraded: boolean;
+  /** Enhancement (bat cards only). */
+  mod?: CardMod;
 }

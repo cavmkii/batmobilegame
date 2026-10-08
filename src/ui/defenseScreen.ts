@@ -1,6 +1,10 @@
 import { BALANCE } from '../data/balance';
 import { BAT_BY_ID } from '../data/bats';
-import { CLANS, CLAN_ORDER, RARITY_COLOR, SYNERGY, SYNERGY_TIERS } from '../data/clans';
+import { RARITY_COLOR } from '../data/clans';
+import { BOSS_RULE_BY_ID } from '../data/bossRules';
+import { CHARM_BY_ID } from '../data/charms';
+import { ENHANCE_BY_ID } from '../data/enhance';
+import { FORMATIONS, type FormationId } from '../data/formations';
 import { MATRIARCH_BY_ID } from '../data/matriarchs';
 import { ENEMY_BY_ID } from '../data/enemies';
 import { SPELL_BY_ID } from '../data/spells';
@@ -8,8 +12,8 @@ import { TERRAIN } from '../data/terrain';
 import type { Card } from '../data/types';
 import { Defense } from '../game/defense';
 import { ATTACK_LABEL, attackLabel, attackStyle, blueprint, describeTrait } from '../game/progression';
-import { resolveBattle } from '../game/run';
-import { FieldRenderer, VIEW_H, VIEW_W, type Highlight } from '../render/fieldRenderer';
+import { applyLevelResult, resolveBattle } from '../game/run';
+import { FORMATION_COLOR, FieldRenderer, VIEW_H, VIEW_W, type Highlight } from '../render/fieldRenderer';
 import { registerScreen } from './app';
 import { batImg, clanPips, patternGrid, rarityOf } from './components';
 import { h } from './dom';
@@ -32,7 +36,7 @@ registerScreen('battle', (app) => {
   const node = r.map.nodes[r.activeNode!];
   const d = new Defense({
     encounterId: node.encounter!,
-    row: node.row,
+    row: node.depth ?? node.row,
     deck: r.deck,
     matriarchId: r.matriarchId,
     roster: app.profile.roster,
@@ -42,6 +46,11 @@ registerScreen('battle', (app) => {
     seed: (r.rngState ^ hash(node.id)) >>> 0,
     biome: r.biome,
     modifiers: r.modifiers,
+    charms: r.charms,
+    bossRule: node.bossRule,
+    difficulty: r.difficulty,
+    formationLevels: r.formations,
+    objective: node.type === 'battle' ? r.objective : undefined,
   });
   // Field guide: enemies count as met once their night begins.
   const meet = () => {
@@ -68,7 +77,7 @@ registerScreen('battle', (app) => {
     { target: 'pool', wait: 'placed',
       text: 'A used card leaves its slot empty until dawn or a ↻ reroll. Place the other bat the same way: tap it, tap a tile, then tap again.' },
     { target: 'clans', wait: 'next',
-      text: 'Clans. Each clan adds up the levels of its roosts on the field. At 3, 6 and 10 it unlocks a stronger bonus, and bonuses lock in at dusk. The ♛ chip is your matriarch\'s rule for this run: tap it to read it.' },
+      text: 'Formations. Shapes on the grid give bonuses for the night: two of the same bat side by side is a Pair, three of one clan in a row is a Line, a full column, a 2×2 Cluster, a full row. They show as coloured outlines and chips here. Above each threatened column, the forecast says SAFE, RISKY or DANGER. The ♛ chip is your matriarch\'s rule: tap it to read it.' },
     { target: 'guano', wait: 'next',
       text: 'Guano pays for bats, rerolls and spells. Each dawn your roosts make more: +1 for every 2 bats you house. Building bats grows your income.' },
     { target: 'end', wait: 'endDay', text: 'When you are ready, tap End day.' },
@@ -140,28 +149,22 @@ registerScreen('battle', (app) => {
   const cards = h('div.hand-row');
   const clanBar = h('div.clan-bar');
   const mat = MATRIARCH_BY_ID[r.matriarchId];
-  /** Matriarch rule plus each clan's strength: live by day, locked in at night. */
+  /** Matriarch, boss rule, charms, then the formations standing (live by day, locked at night). */
   const renderClans = (isDay: boolean) => {
-    const cs = isDay ? d.clanStrength() : d.nightClans;
-    const chips = CLAN_ORDER.filter((c) => cs[c].levels > 0).map((c) => {
-      const { levels, tier } = cs[c];
-      const next = SYNERGY_TIERS[tier];
-      const v = tier ? SYNERGY[c].values[tier - 1] : 0;
-      return h(`button.clan-chip${tier ? '.on' : ''}`, {
-        style: `--clan:${CLANS[c].color}`,
-        onclick: () => {
-          note = `${CLANS[c].name}: ${levels} roost level${levels === 1 ? '' : 's'} on the field. `
-            + (tier ? `${SYNERGY[c].text(v)}${isDay ? ' tonight' : ''}. ` : '')
-            + (next ? `${next - levels} more for: ${SYNERGY[c].text(SYNERGY[c].values[tier])}.` : 'Top tier.');
-          key = '';
-        },
-      }, h('span.cc-name', CLANS[c].name.slice(0, 3).toUpperCase()), h('span.cc-n', `${levels}${next ? '/' + next : ''}`),
-      h('span.cc-pips', ...SYNERGY_TIERS.map((_, i) => h(`i${i < tier ? '.lit' : ''}`))));
-    });
+    const hits = isDay ? d.formations() : d.nightFormations;
+    const counts = new Map<FormationId, number>();
+    for (const x of hits) counts.set(x.id, (counts.get(x.id) ?? 0) + 1);
+    const tell = (text: string) => () => { note = text; key = ''; };
+    const boss = d.bossRule ? BOSS_RULE_BY_ID[d.bossRule] : null;
     clanBar.replaceChildren(
-      mat ? h('button.clan-chip.mat', { onclick: () => { note = `♛ ${BAT_BY_ID[mat.batId].name}, ${mat.title}: ${mat.rule}`; key = ''; } }, `♛ ${mat.title}`) : '',
-      ...chips,
-      chips.length ? '' : h('span.small.muted', 'Clan bonuses appear as you build.'),
+      mat ? h('button.clan-chip.mat', { onclick: tell(`♛ ${BAT_BY_ID[mat.batId].name}, ${mat.title}: ${mat.rule}`) }, `♛ ${mat.title}`) : '',
+      boss ? h('button.clan-chip.boss', { onclick: tell(`Boss rule, ${boss.name}: ${boss.desc}`) }, `${boss.icon} ${boss.name}`) : '',
+      ...[...d.charms].map((id) => h('button.clan-chip.charm', { onclick: tell(`${CHARM_BY_ID[id].name}: ${CHARM_BY_ID[id].desc}`) }, CHARM_BY_ID[id].icon)),
+      ...FORMATIONS.filter((f) => counts.has(f.id)).map((f) => h('button.clan-chip.on', {
+        style: `--clan:${FORMATION_COLOR[f.id]}`,
+        onclick: tell(`${f.name} ×${counts.get(f.id)} (level ${d.formationLevel(f.id)}): ${f.shape}. ${isDay ? 'If it stands at dusk' : 'Tonight'}: ${f.text(d.formationValue(f.id))}.`),
+      }, h('span.cc-name', `${f.icon} ${f.name}`), counts.get(f.id)! > 1 ? h('span.cc-n', `×${counts.get(f.id)}`) : '')),
+      counts.size ? '' : h('span.small.muted', isDay ? 'Formations: pair, line, column, cluster, full row.' : ''),
     );
   };
   const overlay = h('div.battle-overlay');
@@ -337,6 +340,7 @@ registerScreen('battle', (app) => {
       onpointerdown: (e: PointerEvent) => { e.preventDefault(); o.onTap(); if (kind === 'bat') startHold(id, null); },
     },
     h('span.cost', cost),
+    card.mod ? h('span.mod-badge', { title: ENHANCE_BY_ID[card.mod].name }, ENHANCE_BY_ID[card.mod].icon) : '',
     kind === 'bat' ? batImg(id, 2) : h('div.spell-icon', SPELL_BY_ID[id].icon),
     h('div.hc-name', name.replace(/ Bat$/, '') + (card.upgraded ? '+' : '')),
     kind === 'bat' ? h('div.hc-atk', clanPips(clans), ' ', ATTACK_LABEL[attackStyle(bpOf(card).traits, bpOf(card).stats.range)].icon) : clanPips(clans),
@@ -360,8 +364,9 @@ registerScreen('battle', (app) => {
     if (k === key) return;
     key = k;
     guano.replaceChildren(h('span.g-icon', '◆'), h('b', String(d.guano)),
-      h('span.small.muted', isDay ? ` guano · +${d.projectedIncome()} at dawn` : ' guano'));
-    guano.title = `Dawn income: +2, plus 1 per 2 bats housed in standing roosts, plus 1 per ${d.rule.killsPerGuano} kills, plus the Nectarivore bonus`;
+      h('span.small.muted', isDay ? ` guano · +${d.projectedIncome() + d.interestNow()} at dawn` : ' guano'),
+      isDay && d.interestNow() ? h('span.small.interest', ` (${d.interestNow()} interest)`) : '');
+    guano.title = `Dawn income: +2, plus 1 per 2 bats housed in standing roosts, plus 1 per ${d.rule.killsPerGuano} kills, plus Clusters, plus interest: +1 per ${BALANCE.interest.per} unspent (max ${d.interestCap})`;
     renderClans(isDay);
     piles.textContent = `deck ${d.drawPile.length} · discard ${d.discard.length}`;
     refreshBtn.textContent = `↻ ${d.refreshCost}`;
@@ -406,7 +411,7 @@ registerScreen('battle', (app) => {
       text = isDay
         ? d.day === 1
           ? `${d.previewHidden ? 'New Moon: you won\'t see tonight\'s enemies in advance.' : 'Tonight\'s enemies are shown at the top.'} Build roosts in the columns they'll come down. Two roosts of the same bat and level merge into one a level higher: tap one, then the other. ↻ rerolls the pool for ${d.refreshCost} guano.`
-          : d.previewHidden ? `Dawn: +${d.lastIncome} guano. New Moon: tonight's enemies are hidden.` : `Dawn: +${d.lastIncome} guano (${d.lastIncomeParts.base} base, ${d.lastIncomeParts.roosts} from roosts, ${d.lastIncomeParts.kills} from kills${d.lastIncomeParts.clans ? `, ${d.lastIncomeParts.clans} nectar` : ''}${d.lastIncomeParts.relic ? `, ${d.lastIncomeParts.relic} relic` : ''}). Tonight: ${tonightSummary(d)}.`
+          : d.previewHidden ? `Dawn: +${d.lastIncome} guano. New Moon: tonight's enemies are hidden.` : `Dawn: +${d.lastIncome} guano (${d.lastIncomeParts.base} base, ${d.lastIncomeParts.roosts} from roosts, ${d.lastIncomeParts.kills} from kills${d.lastIncomeParts.clans ? `, ${d.lastIncomeParts.clans} clusters` : ''}${d.lastIncomeParts.interest ? `, ${d.lastIncomeParts.interest} interest` : ''}${d.lastIncomeParts.relic ? `, ${d.lastIncomeParts.relic} relic` : ''}). Tonight: ${tonightSummary(d)}.`
         : 'Bats fly out on their own. Spells are instants: tap one twice to cast.';
     }
     info.textContent = text;
@@ -475,6 +480,7 @@ registerScreen('battle', (app) => {
   const showResult = () => {
     const won = d.phase === 'won';
     if (tut >= 0) finishTutorial();
+    applyLevelResult(r, { shattered: d.shattered, brokenCharms: d.brokenCharms, tally: d.tally });
     resolveBattle(r, won, d.cave.hp);
     app.save();
     overlay.classList.add('show');

@@ -1,4 +1,5 @@
 import { BALANCE } from '../data/balance';
+import { BOSS_RULES, type BossRuleId } from '../data/bossRules';
 import { ENCOUNTERS } from '../data/enemies';
 import type { Rng } from './rng';
 
@@ -12,6 +13,9 @@ export interface MapNode {
   type: NodeType;
   next: string[];
   encounter?: string;
+  /** Difficulty depth on the full 8-row scale (short saga maps stretch onto it). */
+  depth?: number;
+  bossRule?: BossRuleId;
 }
 
 export interface RunMap {
@@ -29,14 +33,19 @@ const MID_WEIGHTS: Record<Exclude<NodeType, 'boss'>, number> = {
 };
 
 function pickEncounter(rng: Rng, tier: 'battle' | 'elite' | 'boss', row: number): string {
-  const ok = ENCOUNTERS.filter((e) => e.tier === tier && e.minRow <= row);
+  let ok = ENCOUNTERS.filter((e) => e.tier === tier && e.minRow <= row);
+  // Early saga bosses sit shallower than the boss's usual row: use it anyway, scaled down by depth.
+  if (!ok.length) ok = ENCOUNTERS.filter((e) => e.tier === tier);
   // Prefer encounters introduced recently so difficulty climbs with depth.
   const top = Math.max(...ok.map((e) => e.minRow));
   const recent = ok.filter((e) => e.minRow >= top - 1);
   return rng.pick(recent).id;
 }
 
-export function generateMap(rng: Rng, rows = BALANCE.run.rows): RunMap {
+export function generateMap(rng: Rng, rows = BALANCE.run.rows, bossRule?: BossRuleId, maxDepth = BALANCE.run.rows - 1): RunMap {
+  const fullRows = BALANCE.run.rows;
+  const depthOf = (r: number) => (rows === fullRows ? r : Math.round((r * maxDepth) / (rows - 1)));
+  const short = rows < fullRows;
   const nodes: Record<string, MapNode> = {};
   const rowIds: string[][] = [];
   const last = rows - 1;
@@ -54,12 +63,16 @@ export function generateMap(rng: Rng, rows = BALANCE.run.rows): RunMap {
         if (r < 2) w.elite = 0;
         if (r < 3) w.rest = 0;
         if (r === last - 2) w.rest = 0; // a rest row follows anyway
+        // Short (saga) maps: the middle row is always a fight, so a run has 3 levels and a boss.
+        if (short && r === 2) Object.assign(w, { event: 0, shop: 0, treasure: 0, rest: 0, battle: 70, elite: 30 });
+        if (short && r !== 2) Object.assign(w, { elite: 0, battle: 25 });
         type = rng.weighted(w);
       }
       const id = `r${r}n${i}`;
       const jitter = r === last ? 0 : (rng.next() - 0.5) * 0.08;
-      nodes[id] = { id, row: r, x: (i + 1) / (count + 1) + jitter, type, next: [] };
-      if (type === 'battle' || type === 'elite' || type === 'boss') nodes[id].encounter = pickEncounter(rng, type, r);
+      nodes[id] = { id, row: r, depth: depthOf(r), x: (i + 1) / (count + 1) + jitter, type, next: [] };
+      if (type === 'battle' || type === 'elite' || type === 'boss') nodes[id].encounter = pickEncounter(rng, type, depthOf(r));
+      if (type === 'boss') nodes[id].bossRule = bossRule ?? rng.pick(BOSS_RULES).id;
       ids.push(id);
     }
     rowIds.push(ids);

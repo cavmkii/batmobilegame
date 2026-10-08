@@ -28,6 +28,8 @@ export interface Profile {
   seenEnemies: string[];
   /** Duplicates pulled but not yet resolved (plus-level vs XP). */
   pendingDupes: string[];
+  /** Saga progress: highest node unlocked, best stars per node. */
+  saga: { unlocked: number; stars: Record<number, number> };
   /** Field-guide rewards already claimed (milestones and region sets). */
   claimed: string[];
   run?: RunState;
@@ -48,6 +50,7 @@ export function newProfile(): Profile {
     pendingDupes: [],
     claimed: [],
     seenEnemies: [],
+    saga: { unlocked: 1, stars: {} },
     stats: { runs: 0, clears: 0, pulls: 0, bestRow: 0 },
   };
 }
@@ -65,6 +68,16 @@ function migrate(p: Profile) {
   p.lastMatriarch ??= legacy.lastCommander;
   delete legacy.cores;
   for (const o of Object.values(p.roster)) o.skills ??= [];
+  p.saga ??= { unlocked: 1, stars: {} };
+  if (p.run) {
+    // Runs started before charms and the saga.
+    p.run.charms ??= [];
+    p.run.formations ??= {};
+    p.run.charmOffer ??= null;
+    p.run.chartOffer ??= null;
+    p.run.tally ??= { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0 };
+    if (p.run.shop) Object.assign(p.run.shop, { charms: p.run.shop.charms ?? [], enhance: p.run.shop.enhance ?? [], chart: p.run.shop.chart ?? null });
+  }
   delete legacy.lastCommander;
   const run = p.run as (RunState & { commanderId?: string }) | undefined;
   if (run && !run.matriarchId) {

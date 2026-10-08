@@ -2,7 +2,7 @@ import { BALANCE } from '../data/balance';
 import { BATS, BAT_BY_ID } from '../data/bats';
 import { MATRIARCH_BY_ID } from '../data/matriarchs';
 import { SPELLS } from '../data/spells';
-import type { Card } from '../data/types';
+import type { Card, ClanId } from '../data/types';
 import type { Profile } from './profile';
 
 export const isBasic = (card: Pick<Card, 'kind' | 'id'>) => card.kind === 'bat' && !!BAT_BY_ID[card.id].basic;
@@ -15,7 +15,7 @@ export function flockOptions(p: Profile): string[] {
   return Object.keys(p.roster).filter((id) => BAT_BY_ID[id] && isFlockBat(id));
 }
 
-export function validateSetup(p: Profile, matriarchId: string, flock: string[]): string | null {
+export function validateSetup(p: Profile, matriarchId: string, flock: string[], restrict?: ClanId): string | null {
   if (!MATRIARCH_BY_ID[matriarchId] || !BAT_BY_ID[matriarchId]?.matriarch) return 'Not a matriarch.';
   if (!p.roster[matriarchId]) return 'You do not own this matriarch.';
   const max = BALANCE.run.flock.species;
@@ -24,6 +24,8 @@ export function validateSetup(p: Profile, matriarchId: string, flock: string[]):
   const legal = new Set(flockOptions(p));
   const bad = flock.find((b) => !legal.has(b));
   if (bad) return `${BAT_BY_ID[bad]?.name ?? bad} isn't in your collection.`;
+  const off = restrict && flock.find((b) => !BAT_BY_ID[b].clans.includes(restrict));
+  if (off) return `This node only allows ${restrict} bats: ${BAT_BY_ID[off].name} can't come.`;
   return null;
 }
 

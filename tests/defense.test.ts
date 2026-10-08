@@ -6,7 +6,7 @@ import { SPELL_BY_ID } from '../src/data/spells';
 import type { Card } from '../src/data/types';
 import { Defense, type DefenseConfig } from '../src/game/defense';
 import { buildStartingDeck, newCard } from '../src/game/deck';
-import { newOwnedBat, type OwnedBat } from '../src/game/progression';
+import { blueprint, newOwnedBat, type OwnedBat } from '../src/game/progression';
 
 const roster = (ids: string[], level = 1): Record<string, OwnedBat> =>
   Object.fromEntries(ids.map((id) => [id, { ...newOwnedBat(), level, skills: [0, 0, 0] }]));
@@ -353,44 +353,159 @@ describe('matriarchs', () => {
   });
 });
 
-describe('clan bonuses', () => {
-  it('sums standing roost levels per clan, counting dual-clan bats for both', () => {
-    const d = new Defense(cfg({ deck: deckOf('little_brown', 'common_vampire'), caveHp: 1e9, caveMax: 1e9 }));
-    d.guano = 99;
-    d.place(d.pool.findIndex((c) => c?.id === 'little_brown'), 7);
-    d.place(d.pool.findIndex((c) => c?.id === 'common_vampire'), 8);
-    d.slots[7].roost!.level = 4;
-    let cs = d.clanStrength();
-    expect(cs.INS).toEqual({ levels: 4, tier: 1 });
-    expect(cs.SAN).toEqual({ levels: 1, tier: 0 });
-    d.slots[7].roost!.level = 6;
-    cs = d.clanStrength();
-    expect(cs.INS.tier).toBe(2);
-    d.slots[7].roost!.ruined = true;
-    expect(d.clanStrength().INS.levels).toBe(0);
+/** Put a roost straight onto a tile (bypassing the pool), for rule tests. */
+const put = (d: Defense, idx: number, batId: string, level = 1) => {
+  (d as unknown as { newRoost(s: unknown, bp: unknown): void }).newRoost(d.slots[idx], blueprint(batId, undefined));
+  d.slots[idx].roost!.level = level;
+  return d.slots[idx].roost!;
+};
+const at = (col: number, row: number) => row * 5 + col;
+const big = () => new Defense(cfg({ caveHp: 1e9, caveMax: 1e9 }));
+
+describe('formations', () => {
+  const ids = (d: Defense) => d.formations().map((f) => f.id).sort();
+
+  it('finds pairs, lines, columns, clusters and full rows', () => {
+    let d = big();
+    put(d, at(0, 0), 'little_brown');
+    put(d, at(1, 0), 'little_brown');
+    expect(ids(d)).toEqual(['pair']);
+    put(d, at(2, 0), 'big_brown'); // insectivore: makes a Line of 3, no new pair
+    expect(ids(d)).toEqual(['line', 'pair']);
+    d = big();
+    for (const r of [0, 1, 2]) put(d, at(4, r), r === 1 ? 'common_vampire' : 'egyptian_fruit');
+    expect(ids(d)).toEqual(['column']);
+    d = big();
+    put(d, at(0, 1), 'little_brown'); put(d, at(1, 1), 'big_brown'); put(d, at(0, 2), 'eastern_red'); put(d, at(1, 2), 'hoary');
+    expect(ids(d)).toContain('cluster');
+    d = big();
+    for (let c = 0; c < 5; c++) put(d, at(c, 2), ['little_brown', 'egyptian_fruit', 'common_vampire', 'lesser_bulldog', 'pallas_tongue'][c]);
+    expect(ids(d)).toEqual(['full_row']);
   });
 
-  it('locks in at dusk and gives insectivores attack speed', () => {
-    const d = new Defense(cfg({ deck: deckOf('little_brown', 'common_vampire'), caveHp: 1e9, caveMax: 1e9 }));
-    d.guano = 99;
-    d.place(d.pool.findIndex((c) => c?.id === 'little_brown'), 7);
-    d.slots[7].roost!.level = 3;
+  it('ignores wrecked roosts, and star charts raise the bonus', () => {
+    const d = new Defense(cfg({ caveHp: 1e9, caveMax: 1e9, formationLevels: { pair: 3 } }));
+    put(d, at(0, 0), 'little_brown');
+    put(d, at(1, 0), 'little_brown').ruined = true;
+    expect(d.formations()).toEqual([]);
+    expect(d.formationValue('pair')).toBe(20 + 10 * 2);
+  });
+
+  it('locks in at dusk: a pair gives its bats attack', () => {
+    const d = big();
+    put(d, at(0, 0), 'little_brown');
+    put(d, at(1, 0), 'little_brown');
     d.endDay();
-    expect(d.nightClans.INS.tier).toBe(1);
+    expect(d.nightFormations.map((f) => f.id)).toEqual(['pair']);
     for (let k = 0; k < 60 * (BAT_BY_ID.little_brown.roost.respawn + 0.1); k++) d.step(1 / 60);
-    const bat = d.units.find((u) => u.side === 'bat' && u.home === 7)!;
-    expect(bat.mods.hastePct).toBe(15);
+    const bat = d.units.find((u) => u.side === 'bat' && u.home === at(0, 0))!;
+    expect(bat.mods.atkPct).toBe(20);
   });
 
-  it('nectarivores add dawn guano', () => {
-    const d = new Defense(cfg({ deck: deckOf('pallas_tongue', 'fledgling'), roster: roster(['ghost_bat', 'pallas_tongue', 'fledgling']) }));
-    d.guano = 99;
+  it('clusters pay guano at dawn', () => {
+    const d = big();
     const before = d.projectedIncome();
-    d.place(d.pool.findIndex((c) => c?.id === 'pallas_tongue'), 7);
-    const bats = BAT_BY_ID.pallas_tongue.roost.count;
-    expect(d.projectedIncome()).toBe(before + Math.floor(bats / BALANCE.economy.batsPerGuano));
-    d.slots[7].roost!.level = 3;
-    expect(d.projectedIncome()).toBe(before + Math.floor(d.batsPerRoost(d.slots[7].roost!) / BALANCE.economy.batsPerGuano) + 1);
+    put(d, at(0, 1), 'egyptian_fruit'); put(d, at(1, 1), 'egyptian_fruit'); put(d, at(0, 2), 'jamaican_fruit'); put(d, at(1, 2), 'sebas');
+    const housed = Math.floor(d.housedBats() / BALANCE.economy.batsPerGuano);
+    expect(d.projectedIncome()).toBe(before + housed + 2);
+  });
+});
+
+describe('charms, enhancements, boss rules, interest', () => {
+  it('pays interest on unspent guano, capped, and Hoarder raises the cap', () => {
+    const d = big();
+    d.guano = 12;
+    expect(d.interestNow()).toBe(2);
+    d.guano = 100;
+    expect(d.interestNow()).toBe(BALANCE.interest.cap);
+    const h = new Defense(cfg({ charms: ['hoard'] }));
+    h.guano = 100;
+    expect(h.interestNow()).toBe(BALANCE.interest.cap + 3);
+  });
+
+  it('Foster Mother lets a Fledgling merge into any roost of its level', () => {
+    const plain = big();
+    put(plain, at(0, 0), 'little_brown');
+    put(plain, at(1, 0), 'fledgling');
+    expect(plain.canMerge(at(1, 0), at(0, 0))).toBe(false);
+    const d = new Defense(cfg({ charms: ['foster'], caveHp: 1e9, caveMax: 1e9 }));
+    put(d, at(0, 0), 'little_brown');
+    put(d, at(1, 0), 'fledgling');
+    expect(d.canMerge(at(1, 0), at(0, 0))).toBe(true);
+  });
+
+  it('Ripple chains a pattern bump once; Windfall pays for big merges', () => {
+    // Egyptian Fruit Bat pattern: the tile to its right.
+    const d = new Defense(cfg({ charms: ['ripple', 'windfall'], deck: deckOf('egyptian_fruit', 'egyptian_fruit'), caveHp: 1e9, caveMax: 1e9 }));
+    d.guano = 99;
+    put(d, at(1, 0), 'egyptian_fruit');
+    put(d, at(2, 0), 'egyptian_fruit', 3);
+    put(d, at(3, 0), 'little_brown');
+    d.place(0, at(1, 0)); // merge: 1→2, bumps tile 2 (3→4), which ripples to tile 3
+    expect(d.slots[at(2, 0)].roost!.level).toBe(4);
+    expect(d.slots[at(3, 0)].roost!.level).toBe(2);
+  });
+
+  it('Foil starts at level 2; Glass shatters out of the deck when its roost falls', () => {
+    const foil = { ...newCard('bat', 'little_brown'), mod: 'foil' as const };
+    const glass = { ...newCard('bat', 'common_vampire'), mod: 'glass' as const };
+    const d = new Defense(cfg({ deck: [foil, glass], caveHp: 1e9, caveMax: 1e9 }));
+    d.guano = 99;
+    d.place(d.pool.findIndex((c) => c?.uid === foil.uid), at(0, 0));
+    expect(d.slots[at(0, 0)].roost!.level).toBe(2);
+    d.place(d.pool.findIndex((c) => c?.uid === glass.uid), at(2, 0));
+    const r = d.slots[at(2, 0)].roost!;
+    expect(r.glass).toEqual([glass.uid]);
+    r.hp = 1;
+    d.endDay();
+    for (const u of d.units) u.dead = true;
+    (d as unknown as { spawnEnemy(id: string, x: number): void }).spawnEnemy('cat', d.slots[at(2, 0)].x);
+    d.units[d.units.length - 1].y = 5.5;
+    for (let i = 0; i < 60 * 10 && !r.ruined; i++) d.step(1 / 60);
+    expect(d.shattered).toEqual([glass.uid]);
+  });
+
+  it("Owl's Watch closes the left column; Storm shrinks the pool; Drought stops roost income", () => {
+    const owl = new Defense(cfg({ bossRule: 'owl_watch' }));
+    owl.guano = 99;
+    const i = owl.pool.findIndex((c) => c?.kind === 'bat');
+    expect(owl.canPlace(i, at(0, 0))).toBe(false);
+    expect(owl.canPlace(i, at(1, 0))).toBe(true);
+    expect(new Defense(cfg({ bossRule: 'storm' })).pool.length).toBe(BALANCE.economy.poolSize - 1);
+    const dr = new Defense(cfg({ bossRule: 'drought', caveHp: 1e9, caveMax: 1e9 }));
+    put(dr, at(0, 0), 'little_brown');
+    dr.endDay();
+    for (let k = 0; k < 60 * 120 && dr.phase === 'night'; k++) dr.step(1 / 60);
+    expect(dr.lastIncomeParts.roosts).toBe(0);
+  });
+
+  it('Second Wind holds the cave once, then breaks', () => {
+    const d = new Defense(cfg({ charms: ['second_wind'], caveHp: 1, caveMax: 1000 }));
+    d.endDay();
+    for (let k = 0; k < 60 * 120 && d.phase === 'night' && !d.brokenCharms.length; k++) d.step(1 / 60);
+    expect(d.brokenCharms).toEqual(['second_wind']);
+    expect(d.cave.hp).toBeGreaterThan(0);
+  });
+
+  it('the nursery holds no bats, never merges, and losing it loses the level', () => {
+    const d = new Defense(cfg({ objective: 'nursery', caveHp: 1e9, caveMax: 1e9 }));
+    const n = d.slots.find((s) => s.roost?.nursery)!;
+    expect(d.batsPerRoost(n.roost!)).toBe(0);
+    expect(d.formations()).toEqual([]);
+    n.roost!.hp = 1;
+    d.endDay();
+    (d as unknown as { spawnEnemy(id: string, x: number): void }).spawnEnemy('cat', n.x);
+    d.units[d.units.length - 1].y = 5.5;
+    for (let k = 0; k < 60 * 30 && d.phase === 'night'; k++) d.step(1 / 60);
+    expect(d.phase).toBe('lost');
+  });
+
+  it('forecasts weak columns as danger and well-held ones as safe', () => {
+    const d = big();
+    const col = d.tonight[0].col;
+    expect(d.forecast().find((f) => f.col === col)!.label).toBe('danger');
+    for (const r of [0, 1, 2]) put(d, at(col, r), 'little_brown', 6);
+    expect(d.forecast().find((f) => f.col === col)!.label).toBe('safe');
   });
 });
 

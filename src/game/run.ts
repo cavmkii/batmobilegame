@@ -3,7 +3,11 @@ import { BIOMES, BIOME_BY_ID, MODIFIER_BY_ID, rewardBonusPct } from '../data/set
 import { BAT_BY_ID } from '../data/bats';
 import { RELICS } from '../data/relics';
 import { SPELL_BY_ID } from '../data/spells';
-import type { Card, Rarity } from '../data/types';
+import type { Card, CardMod, ClanId, Rarity } from '../data/types';
+import { CHARMS, CHARM_BY_ID, CHARM_PRICE, CHARM_SLOTS, charmSellValue } from '../data/charms';
+import { ENHANCEMENTS, ENHANCE_BY_ID } from '../data/enhance';
+import { FORMATIONS, type FormationId } from '../data/formations';
+import { GOALS, SAGA_ROWS, sagaMaxDepth, sagaNode, type GoalId } from '../data/saga';
 import { buildStartingDeck, draftPool, newCard, validateSetup } from './deck';
 import { generateMap, type MapNode, type RunMap } from './map';
 import type { Profile } from './profile';
@@ -18,6 +22,9 @@ export interface Offer {
 export interface ShopState {
   cards: Offer[];
   relic: string | null;
+  charms: string[];
+  enhance: CardMod[];
+  chart: FormationId | null;
   removeUsed: boolean;
   healUsed: boolean;
 }
@@ -50,6 +57,21 @@ export interface RunState {
   shop: ShopState | null;
   event: string | null;
   status: 'active' | 'won' | 'lost';
+  /** Charm ids (up to CHARM_SLOTS). */
+  charms: string[];
+  /** Formation levels from star charts. */
+  formations: Partial<Record<FormationId, number>>;
+  /** Charm choice waiting after an elite. */
+  charmOffer: string[] | null;
+  /** A star chart offered after a battle (instead of a card). */
+  chartOffer: FormationId | null;
+  /** Saga node number, if this run is a saga node. */
+  saga?: number;
+  restrict?: ClanId;
+  objective?: 'nursery';
+  difficulty?: number;
+  /** Star-goal bookkeeping across the run. */
+  tally: { leaks: number; rerolls: number; maxRoosts: number; maxLevel: number };
 }
 
 export const runRng = (run: RunState) => new Rng(run.rngState);
@@ -58,14 +80,18 @@ const saveRng = (run: RunState, rng: Rng) => (run.rngState = rng.state);
 export interface RunSetup {
   biome?: string;
   modifiers?: string[];
+  /** Play this saga node (its biome, modifiers and twists override the above). */
+  saga?: number;
 }
 
 export function startRun(p: Profile, matriarchId: string, flock: string[], seed: number, setup: RunSetup = {}): RunState {
-  const err = validateSetup(p, matriarchId, flock);
+  const node = setup.saga ? sagaNode(setup.saga) : null;
+  const err = validateSetup(p, matriarchId, flock, node?.restrict);
   if (err) throw new Error(err);
   const rng = new Rng(seed);
-  const map = generateMap(rng);
-  const modifiers = (setup.modifiers ?? []).filter((id) => MODIFIER_BY_ID[id]);
+  const map = node ? generateMap(rng, SAGA_ROWS, node.bossRule, sagaMaxDepth(node.n)) : generateMap(rng);
+  const modifiers = (node ? node.modifiers : setup.modifiers ?? []).filter((id) => MODIFIER_BY_ID[id]);
+  if (node) setup = { ...setup, biome: node.biome };
   let cave = BALANCE.run.caveHp;
   for (const id of modifiers) {
     const e = MODIFIER_BY_ID[id].effect;
@@ -92,6 +118,15 @@ export function startRun(p: Profile, matriarchId: string, flock: string[], seed:
     shop: null,
     event: null,
     status: 'active',
+    charms: [],
+    formations: {},
+    charmOffer: null,
+    chartOffer: null,
+    saga: node?.n,
+    restrict: node?.restrict,
+    objective: node?.objective,
+    difficulty: node?.difficulty,
+    tally: { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0 },
   };
   p.flock = [...flock];
   p.lastMatriarch = matriarchId;
@@ -128,6 +163,8 @@ export function leaveNode(run: RunState) {
   run.event = null;
   run.draft = null;
   run.rewardRelic = null;
+  run.charmOffer = null;
+  run.chartOffer = null;
 }
 
 export function combatRewards(type: MapNode['type'], row: number) {
@@ -162,9 +199,77 @@ export function resolveBattle(run: RunState, won: boolean, caveHpLeft: number) {
   }
   const rng = runRng(run);
   run.draft = draftOffers(run, rng, 3);
-  if (node.type === 'elite') run.rewardRelic = randomRelic(run, rng);
+  // Elites offer a charm (pick 1 of 2); battles sometimes offer a star chart instead of a card.
+  if (node.type === 'elite') run.charmOffer = charmOffers(run, rng, 2);
+  else if (rng.next() < 0.4) run.chartOffer = rng.pick(FORMATIONS).id;
   saveRng(run, rng);
 }
+
+/** Merge a finished level's results into the run: shattered Glass, broken charms, goal tallies. */
+export function applyLevelResult(run: RunState, res: { shattered: string[]; brokenCharms: string[]; tally: RunState['tally'] }) {
+  const gone = new Set(res.shattered);
+  run.deck = run.deck.filter((c) => !gone.has(c.uid));
+  run.charms = run.charms.filter((c) => !res.brokenCharms.includes(c));
+  run.tally.leaks += res.tally.leaks;
+  run.tally.rerolls += res.tally.rerolls;
+  run.tally.maxRoosts = Math.max(run.tally.maxRoosts, res.tally.maxRoosts);
+  run.tally.maxLevel = Math.max(run.tally.maxLevel, res.tally.maxLevel);
+}
+
+// ---------------- Charms, star charts, enhancements ----------------
+
+export function charmOffers(run: RunState, rng: Rng, n: number): string[] {
+  const weights = { common: 6, uncommon: 3, rare: 1 } as const;
+  const left = CHARMS.filter((c) => !run.charms.includes(c.id));
+  const out: string[] = [];
+  while (out.length < n) {
+    const avail = left.filter((x) => !out.includes(x.id));
+    if (!avail.length) break;
+    out.push(rng.weighted(Object.fromEntries(avail.map((x) => [x.id, weights[x.rarity]]))));
+  }
+  return out;
+}
+
+export const charmsFull = (run: RunState) => run.charms.length >= CHARM_SLOTS;
+
+export function takeCharm(run: RunState, id: string): boolean {
+  if (!CHARM_BY_ID[id] || run.charms.includes(id) || charmsFull(run)) return false;
+  run.charms.push(id);
+  return true;
+}
+
+export function sellCharm(run: RunState, id: string): boolean {
+  if (!run.charms.includes(id)) return false;
+  run.charms = run.charms.filter((c) => c !== id);
+  run.figs += charmSellValue(id);
+  return true;
+}
+
+export function studyChart(run: RunState, id: FormationId) {
+  run.formations[id] = (run.formations[id] ?? 1) + 1;
+}
+
+/** Enhance a bat card. Replaces any previous enhancement. */
+export function enhanceCard(run: RunState, uid: string, mod: CardMod): boolean {
+  const c = run.deck.find((x) => x.uid === uid);
+  if (!c || c.kind !== 'bat' || !ENHANCE_BY_ID[mod]) return false;
+  c.mod = mod;
+  return true;
+}
+
+// ---------------- Saga results ----------------
+
+export function goalMet(run: RunState, g: GoalId): boolean {
+  const t = run.tally;
+  switch (g) {
+    case 'noLeak': return t.leaks === 0;
+    case 'healthy': return run.caveHp >= run.caveMax * 0.75;
+    case 'frugal': return t.rerolls === 0;
+    case 'small': return t.maxRoosts <= 7;
+    case 'tall': return t.maxLevel >= 6;
+  }
+}
+export { GOALS };
 
 function rollRarity(rng: Rng): Rarity {
   return rng.weighted(BALANCE.draft.weights);
@@ -175,7 +280,8 @@ function rollRarity(rng: Rng): Rarity {
  * the rest are new species by rarity, or spells.
  */
 export function draftOffers(run: RunState, rng: Rng, n: number): Offer[] {
-  const pool = draftPool();
+  const all = draftPool();
+  const pool = { ...all, bats: run.restrict ? all.bats.filter((b) => BAT_BY_ID[b].clans.includes(run.restrict!)) : all.bats };
   const owned = [...new Set(run.deck.filter((c) => c.kind === 'bat' && !BAT_BY_ID[c.id].basic).map((c) => c.id))];
   const offers: Offer[] = [];
   const taken = (o: Offer) => offers.some((x) => x.kind === o.kind && x.id === o.id);
@@ -240,9 +346,19 @@ export function takeRelic(run: RunState, id: string | null) {
 }
 
 function makeShop(run: RunState, rng: Rng): ShopState {
-  const cards = draftOffers(run, rng, 4).map((o) => ({ ...o, price: BALANCE.shop.cardPrice[offerRarity(o)] }));
-  return { cards, relic: randomRelic(run, rng), removeUsed: false, healUsed: false };
+  const cards = draftOffers(run, rng, 3).map((o) => ({ ...o, price: BALANCE.shop.cardPrice[offerRarity(o)] }));
+  return {
+    cards,
+    relic: rng.next() < 0.5 ? randomRelic(run, rng) : null,
+    charms: charmOffers(run, rng, 2),
+    enhance: rng.shuffle(ENHANCEMENTS.map((e) => e.id)).slice(0, 2),
+    chart: rng.pick(FORMATIONS).id,
+    removeUsed: false,
+    healUsed: false,
+  };
 }
+
+export const charmPrice = (id: string) => CHARM_PRICE[CHARM_BY_ID[id].rarity];
 
 // ---------------- Events ----------------
 
@@ -354,7 +470,7 @@ export function cardName(c: Pick<Card, 'kind' | 'id' | 'upgraded'>): string {
 }
 
 /** Bank the run's rewards into the profile and close the run. */
-export function finishRun(p: Profile, run: RunState): { xp: number; glow: number; cleared: boolean } {
+export function finishRun(p: Profile, run: RunState): { xp: number; glow: number; cleared: boolean; stars: number; saga?: number } {
   const cleared = run.status === 'won';
   const mult = (cleared ? BALANCE.rewards.clearBonusMult : 1) * (1 + rewardBonusPct(run.modifiers ?? []) / 100);
   const xp = Math.round(run.xpEarned * mult);
@@ -362,8 +478,18 @@ export function finishRun(p: Profile, run: RunState): { xp: number; glow: number
   p.xp += xp;
   p.glow += glow;
   if (cleared) p.stats.clears++;
+  let stars = 0;
+  if (run.saga) {
+    const node = sagaNode(run.saga);
+    stars = cleared ? 1 + node.goals.filter((g) => goalMet(run, g)).length : 0;
+    p.saga.stars[run.saga] = Math.max(p.saga.stars[run.saga] ?? 0, stars);
+    if (cleared && run.saga >= p.saga.unlocked) {
+      p.saga.unlocked = run.saga + 1;
+      p.glow += 100 + 10 * run.saga; // first-clear bonus
+    }
+  }
   const depth = Math.max(0, ...run.cleared.map((id) => run.map.nodes[id].row + 1));
   p.stats.bestRow = Math.max(p.stats.bestRow, depth);
   p.run = undefined;
-  return { xp, glow, cleared };
+  return { xp, glow, cleared, stars, saga: run.saga };
 }

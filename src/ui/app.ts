@@ -9,7 +9,8 @@ export type Screen =
   | { name: 'bestiary' }
   | { name: 'bat'; id: string }
   | { name: 'summon' }
-  | { name: 'prep' }
+  | { name: 'prep'; saga?: number }
+  | { name: 'saga' }
   | { name: 'map' }
   | { name: 'deck' }
   | { name: 'battle' }
@@ -17,7 +18,7 @@ export type Screen =
   | { name: 'shop' }
   | { name: 'rest' }
   | { name: 'event'; message?: string }
-  | { name: 'runEnd'; xp: number; glow: number; cleared: boolean; depth: number };
+  | { name: 'runEnd'; xp: number; glow: number; cleared: boolean; depth: number; stars?: number; saga?: number };
 
 export interface App {
   profile: Profile;
@@ -69,7 +70,7 @@ function initialScreen(p: Profile): Screen {
   if (p.run) {
     // A reload mid-node restarts that node; the map is the safe re-entry point otherwise.
     const node = p.run.activeNode ? p.run.map.nodes[p.run.activeNode] : null;
-    if (node && (p.run.draft || p.run.rewardRelic)) return { name: 'reward' };
+    if (node && (p.run.draft || p.run.rewardRelic || p.run.charmOffer || p.run.chartOffer)) return { name: 'reward' };
     if (node?.type === 'shop') return { name: 'shop' };
     if (node?.type === 'rest') return { name: 'rest' };
     if (node?.type === 'event') return { name: 'event' };
