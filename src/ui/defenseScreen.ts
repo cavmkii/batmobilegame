@@ -1,8 +1,10 @@
 import { BALANCE } from '../data/balance';
 import { BAT_BY_ID } from '../data/bats';
-import { RARITY_COLOR } from '../data/clans';
+import { CLANS, RARITY_COLOR } from '../data/clans';
+import { RELIC_BY_ID } from '../data/relics';
+import { MODIFIER_BY_ID } from '../data/setup';
 import { BOSS_RULE_BY_ID } from '../data/bossRules';
-import { CHARM_BY_ID } from '../data/charms';
+import { CHARM_BY_ID, CHARM_SLOTS } from '../data/charms';
 import { ENHANCE_BY_ID } from '../data/enhance';
 import { FORMATIONS, type FormationId } from '../data/formations';
 import { MATRIARCH_BY_ID } from '../data/matriarchs';
@@ -16,7 +18,7 @@ import { applyLevelResult, resolveBattle } from '../game/run';
 import { FORMATION_COLOR, FieldRenderer, VIEW_H, VIEW_W, type Highlight } from '../render/fieldRenderer';
 import { registerScreen } from './app';
 import { batImg, clanPips, patternGrid, rarityOf } from './components';
-import { h } from './dom';
+import { h, modal } from './dom';
 import { endRun } from './runScreens';
 
 const hash = (s: string) => [...s].reduce((a, c) => (Math.imul(a, 31) + c.charCodeAt(0)) >>> 0, 7);
@@ -145,6 +147,7 @@ registerScreen('battle', (app) => {
   const piles = h('span.small.muted');
   const refreshBtn = h('button.refresh', { onclick: () => { if (d.refresh()) { sel = null; note = 'New cards in the pool.'; } } });
   const endBtn = h('button.primary.end-day', { onclick: () => { sel = null; pending = null; note = ''; meet(); d.endDay(); onTutorial('endDay'); } }, 'End day ☾');
+  const effectsBtn = h('button.ghost.small.effects-btn', { title: 'Effects in play', onclick: () => openEffects() }, '📜');
   const speedBtn = h('button.ghost.small', { onclick: () => { speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; speedBtn.textContent = `${speed}×`; } }, '1×');
   const cards = h('div.hand-row');
   const clanBar = h('div.clan-bar');
@@ -441,6 +444,58 @@ registerScreen('battle', (app) => {
     }
   };
 
+  // ---------------- Effects in play ----------------
+  /** Everything currently changing the rules, in one list. The night pauses while it's open. */
+  const openEffects = () => {
+    paused = true;
+    const sec = (title: string, rows: (Node | string)[]) => rows.length ? h('section.fx-sec', h('h3', title), ...rows) : '';
+    const row = (icon: string, name: string, text: string, extra = '') =>
+      h('div.fx-row', h('span.fx-icon', icon), h('div', h('b', name), extra ? h('span.small.muted', ` ${extra}`) : '', h('div.small', text)));
+    const isDay = d.phase === 'day';
+    const hits = isDay ? d.formations() : d.nightFormations;
+    const counts = new Map<FormationId, number>();
+    for (const x of hits) counts.set(x.id, (counts.get(x.id) ?? 0) + 1);
+    const boss = d.bossRule ? BOSS_RULE_BY_ID[d.bossRule] : null;
+    const t = d.time;
+    const timed: (Node | string)[] = [];
+    if (d.phase === 'night') {
+      if (t < d.buffs.atkUntil) timed.push(row('🌕', 'Attack buff', `Bats +${Math.round(d.buffs.atkPct)}% attack${d.buffs.lifesteal ? `, +${d.buffs.lifesteal}% lifesteal` : ''}`, `${Math.ceil(d.buffs.atkUntil - t)}s left`));
+      if (t < d.buffs.hasteUntil) timed.push(row('🌸', 'Haste', `Bats attack ${Math.round(d.buffs.hastePct)}% faster`, `${Math.ceil(d.buffs.hasteUntil - t)}s left`));
+      if (t < d.buffs.slowUntil) timed.push(row('🌫', 'Fog', `Enemies ${d.buffs.slowPct}% slower`, `${Math.ceil(d.buffs.slowUntil - t)}s left`));
+    }
+    const enhanced = r.deck.filter((c) => c.mod);
+    const terrains = [...new Set(d.slots.map((s) => s.terrain).filter((x): x is NonNullable<typeof x> => !!x))];
+    const content = h('div.effects-list',
+      h('h2', 'Effects in play'),
+      d.phase === 'night' ? h('p.small.muted', 'The night is paused while this is open.') : '',
+      sec('Leaders and rules', [
+        mat ? row('♛', `${BAT_BY_ID[mat.batId].name}: ${mat.title}`, mat.rule) : '',
+        boss ? row(boss.icon, `Boss rule: ${boss.name}`, boss.desc) : '',
+        r.restrict ? row('🔒', 'Clan restriction', `Only ${CLANS[r.restrict].name} bats can be drafted.`) : '',
+        d.slots.some((s) => s.roost?.nursery) ? row('🍼', 'Nursery', 'If the nursery is wrecked, the level is lost.') : '',
+        ...(r.modifiers ?? []).map((id) => MODIFIER_BY_ID[id] ? row(MODIFIER_BY_ID[id].icon, MODIFIER_BY_ID[id].name, MODIFIER_BY_ID[id].desc) : ''),
+        r.difficulty && r.difficulty > 1 ? row('📈', 'Saga depth', `Enemies have +${Math.round((r.difficulty - 1) * 100)}% HP and attack.`) : '',
+      ].filter(Boolean)),
+      sec(`Charms (${d.charms.size}/${CHARM_SLOTS})`, [...d.charms].map((id) => row(CHARM_BY_ID[id].icon, CHARM_BY_ID[id].name, CHARM_BY_ID[id].desc))),
+      sec(isDay ? 'Formations standing (lock in at dusk)' : 'Formations tonight', FORMATIONS.filter((f) => counts.has(f.id)).map((f) =>
+        row(f.icon, `${f.name}${counts.get(f.id)! > 1 ? ` ×${counts.get(f.id)}` : ''}`, f.text(d.formationValue(f.id)), `level ${d.formationLevel(f.id)}`))),
+      sec('Star charts studied', FORMATIONS.filter((f) => (r.formations[f.id] ?? 1) > 1).map((f) =>
+        row('✦', f.name, `Level ${r.formations[f.id]}: ${f.text(d.formationValue(f.id))}`))),
+      sec('Relics', r.relics.filter((id) => RELIC_BY_ID[id]).map((id) => row(RELIC_BY_ID[id].icon, RELIC_BY_ID[id].name, RELIC_BY_ID[id].desc))),
+      sec('Active spells', timed),
+      sec('Economy', [
+        row('◆', 'Dawn income', `About +${d.projectedIncome() + d.interestNow()} guano: base, 1 per ${BALANCE.economy.batsPerGuano} bats housed, 1 per ${d.rule.killsPerGuano} kills, Clusters.`),
+        row('🏦', 'Interest', `+1 guano per ${BALANCE.interest.per} unspent at dawn, up to ${d.interestCap}. Now: +${d.interestNow()}.`),
+        row('↻', 'Reroll', d.refreshCost ? `${d.refreshCost} guano` : 'Free (once today)'),
+      ]),
+      sec('Enhanced cards in your deck', enhanced.map((c) => row(ENHANCE_BY_ID[c.mod!].icon, `${BAT_BY_ID[c.id]?.name ?? c.id}: ${ENHANCE_BY_ID[c.mod!].name}`, ENHANCE_BY_ID[c.mod!].desc))),
+      sec('Terrain on this field', terrains.map((id) => row(TERRAIN[id].icon, TERRAIN[id].name, TERRAIN[id].desc))),
+      h('button.big.primary', { onclick: () => close() }, 'Close'),
+    );
+    const close = modal(content, () => { paused = false; });
+  };
+
+  let paused = false;
   let last = performance.now();
   let acc = 0;
   let raf = 0;
@@ -449,7 +504,9 @@ registerScreen('battle', (app) => {
   const loop = (now: number) => {
     const elapsed = Math.min(0.1, (now - last) / 1000);
     last = now;
-    if (d.phase === 'night') {
+    if (d.phase === 'night' && paused) {
+      acc = 0;
+    } else if (d.phase === 'night') {
       acc += elapsed * speed;
       while (acc >= DT && d.phase === 'night') {
         d.step(DT);
@@ -495,7 +552,7 @@ registerScreen('battle', (app) => {
     h('div.def-top',
       h('div', h('div.enc-name', `${node.type === 'battle' ? '' : node.type.toUpperCase() + ' · '}${d.encounter.name}`), phaseLabel),
       h('div.cave-mini', h('span.small', '🏔'), h('div.hpbar', caveFill), caveText),
-      speedBtn,
+      h('div.top-btns', effectsBtn, speedBtn),
     ),
     h('div.canvas-wrap', canvas, coach, overlay),
     info,

@@ -353,3 +353,11 @@ header.bar .currency { font-size: 13px; gap: 8px; }
 .nc-stars { color: var(--accent); }
 .nc-tags { display: flex; flex-wrap: wrap; gap: 4px; }
 .big-stars { font-size: 34px; color: var(--accent); letter-spacing: 4px; margin: 4px 0; }
+
+/* Effects in play */
+.effects-btn { font-size: 18px; padding: 4px 8px; }
+.effects-list { max-height: 75dvh; overflow-y: auto; }
+.fx-sec h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); margin: 12px 0 4px; }
+.fx-row { display: grid; grid-template-columns: 26px 1fr; gap: 6px; padding: 5px 0; border-bottom: 1px solid #ffffff12; }
+.fx-icon { font-size: 18px; text-align: center; }
+.top-btns { display: flex; gap: 4px; align-items: center; flex: 0 0 auto; }
