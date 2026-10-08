@@ -1,15 +1,17 @@
 import { BALANCE } from '../data/balance';
 import { BIOME_BY_ID, MODIFIER_BY_ID, rewardBonusPct } from '../data/setup';
+import { MATRIARCH_BY_ID } from '../data/matriarchs';
 import { BAT_BY_ID } from '../data/bats';
 import { ENCOUNTERS } from '../data/enemies';
 import type { Card } from '../data/types';
 import type { NodeType } from '../game/map';
+import { copiesIn } from '../game/deck';
 import {
   EVENT_BY_ID, addCard, availableNodes, cardName, chooseEventOption, combatRewards, deckFull, enterNode, finishRun, heal,
   leaveNode, removeCard, takeRelic, upgradeCard, type Offer, type RunState,
 } from '../game/run';
 import { registerScreen, type App } from './app';
-import { batImg, cardFace, clanPips, currencyBar, fmt, header, relicCard, relicChip } from './components';
+import { batImg, cardFace, currencyBar, fmt, header, relicCard, relicChip } from './components';
 import { h, modal, toast } from './dom';
 
 export const NODE_ICON: Record<NodeType, string> = {
@@ -85,13 +87,13 @@ registerScreen('map', (app) => {
       onclick: () => (state === 'available' ? goToNode(app, n.id) : toast(enc ? `${enc.name} (${n.type})` : n.type)),
     }, NODE_ICON[n.type]);
   });
-  const cmd = BAT_BY_ID[r.commanderId];
+  const mat = MATRIARCH_BY_ID[r.matriarchId];
   return h('div.screen',
     header(`${BIOME_BY_ID[r.biome ?? '']?.icon ?? ''} ${BIOME_BY_ID[r.biome ?? '']?.name ?? 'Night Flight'}`, () => app.go({ name: 'home' }), h('button.ghost', { onclick: () => app.go({ name: 'deck' }) }, `Deck ${r.deck.length}`)),
     runHud(app),
     !app.profile.tutorialDone ? h('div.coach', h('div.coach-step', 'The run map'), h('div', 'A run is a path up this map to the boss at the top. Each ⚔ is a level of several nights. Tap a glowing node to start.')) : null,
     r.modifiers?.length ? h('div.mod-chips', ...r.modifiers.map((id) => h('span.tag', { title: MODIFIER_BY_ID[id]?.desc }, `${MODIFIER_BY_ID[id]?.icon} ${MODIFIER_BY_ID[id]?.name}`)), h('span.small.muted', ` rewards +${rewardBonusPct(r.modifiers)}%`)) : null,
-    h('div.map-cmd', batImg(cmd.id, 1), h('span.small', cmd.name), clanPips(cmd.clans)),
+    h('button.map-cmd', { onclick: () => toast(`${BAT_BY_ID[r.matriarchId].name}, ${mat.title}: ${mat.rule}`) }, batImg(r.matriarchId, 1), h('span.small', `♛ ${mat.title}`), h('span.small.muted', mat.rule)),
     h('div.map', { style: `height:${H}px` }, svg, ...nodes),
     h('div.legend.small.muted', ...Object.entries(NODE_ICON).map(([k, v]) => h('span', `${v} ${k}`))),
     h('button.ghost.small', {
@@ -109,12 +111,11 @@ registerScreen('map', (app) => {
 
 function deckGrid(app: App, onPick?: (c: Card) => void, filter?: (c: Card) => boolean) {
   const r = run(app);
-  const cards = [{ kind: 'bat', id: r.commanderId, uid: 'cmd', upgraded: false } as Card, ...r.deck]
-    .filter((c) => c.uid !== 'cmd' || !onPick)
-    .filter((c) => !filter || filter(c));
+  // Copies sit together, so it's easy to see what can merge.
+  const cards = [...r.deck].filter((c) => !filter || filter(c))
+    .sort((a, b) => a.kind.localeCompare(b.kind) || a.id.localeCompare(b.id));
   return h('div.card-grid', ...cards.map((c) => cardFace(c, app.profile.roster[c.id], {
     onclick: onPick ? () => onPick(c) : undefined,
-    footer: c.uid === 'cmd' ? 'Commander' : undefined,
   })));
 }
 
@@ -126,6 +127,12 @@ registerScreen('deck', (app) => {
 function pickFromDeck(app: App, title: string, filter: ((c: Card) => boolean) | undefined, onPick: (c: Card) => void) {
   let close = () => {};
   close = modal(h('div', h('h2', title), deckGrid(app, (c) => { close(); onPick(c); }, filter), h('button.ghost', { onclick: () => close() }, 'Cancel')));
+}
+
+/** "You have 2" for a card already in the deck. */
+function copiesTag(deck: Card[], o: Pick<Card, 'kind' | 'id'>) {
+  const n = copiesIn(deck, o);
+  return n ? h('div.tag.copies', `In deck: ${n}`) : h('div.tag.new-species', 'New');
 }
 
 /** Take an offered card; at the deck cap, ask which card to drop. Returns via callback. */
@@ -163,8 +170,10 @@ registerScreen('reward', (app) => {
     }, 'Take'))) : null,
     r.draft?.length ? h('section',
       h('h2', 'Choose a card'),
+      h('p.muted.small', 'Copies of bats you already run make merges more likely; a new species adds a pattern and a clan.'),
       h('div.card-grid', ...r.draft.map((o) => cardFace({ ...o, upgraded: false }, app.profile.roster[o.id], {
         onclick: () => takeOffer(app, o, () => { r.draft = null; app.save(); app.refresh(); }),
+        footer: copiesTag(r.deck, o),
       }))),
       h('button.ghost', { onclick: () => { r.draft = null; app.save(); app.refresh(); } }, 'Skip card'),
     ) : null,
@@ -191,13 +200,13 @@ registerScreen('shop', (app) => {
     runHud(app),
     h('p.muted.small', 'A fruit bat colony trades in figs. Prices are in 🫐.'),
     h('div.card-grid', ...s.cards.map((o, i) => cardFace({ ...o, upgraded: false }, app.profile.roster[o.id], {
-      footer: h('button.primary', {
+      footer: h('div', copiesTag(r.deck, o), h('button.primary', {
         disabled: r.figs < o.price!,
         onclick: () => {
           if (r.figs < o.price!) return;
           takeOffer(app, o, () => { r.figs -= o.price!; s.cards.splice(i, 1); app.save(); app.refresh(); });
         },
-      }, `🫐 ${o.price}`),
+      }, `🫐 ${o.price}`)),
     }))),
     s.relic ? relicCard(s.relic, h('button.primary', {
       disabled: r.figs < P.relic,

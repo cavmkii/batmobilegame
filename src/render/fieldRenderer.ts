@@ -224,7 +224,7 @@ export class FieldRenderer {
     g.fillRect(x0 + 4, y0 + h - 2, w - 8, 3);
     g.fillStyle = pct > 0.5 ? '#62e27a' : pct > 0.25 ? '#e2c25a' : '#e25a5a';
     g.fillRect(x0 + 4, y0 + h - 2, (w - 8) * pct, 3);
-    // Level badge (♛ marks the commander).
+    // Level badge.
     const mega = this.d.isMega(r);
     g.font = 'bold 10px monospace';
     g.textAlign = 'right';
@@ -233,11 +233,6 @@ export class FieldRenderer {
     g.fillText(label, x0 + w - 1, y0 + 20);
     g.fillStyle = mega ? '#ff9a3d' : r.level >= 5 ? '#ffe14a' : '#e8e0f8';
     g.fillText(label, x0 + w - 2, y0 + 19);
-    if (r.isCommander) {
-      g.fillStyle = '#ffc23d';
-      g.textAlign = 'left';
-      g.fillText('♛', x0 + 14, y0 + 19);
-    }
   }
 
   private drawPreview() {

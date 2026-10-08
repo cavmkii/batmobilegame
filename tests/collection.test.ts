@@ -24,11 +24,10 @@ describe('field guide data', () => {
     expect(new Set(BATS.map((b) => b.id)).size).toBe(BATS.length);
   });
 
-  it('every commander identity has legal bats to draft', () => {
-    for (const cmd of BATS.filter((b) => b.commander)) {
-      const legal = BATS.filter((b) => !b.basic && !b.commander && b.clans.every((c) => cmd.clans.includes(c)));
-      expect(legal.length, cmd.id).toBeGreaterThanOrEqual(6);
-    }
+  it('every matriarch bat has a rule, and every rule a bat', async () => {
+    const { MATRIARCHS, MATRIARCH_BY_ID } = await import('../src/data/matriarchs');
+    for (const b of BATS.filter((x) => x.matriarch)) expect(MATRIARCH_BY_ID[b.id], b.id).toBeTruthy();
+    for (const m of MATRIARCHS) expect(BAT_BY_ID[m.batId]?.matriarch, m.batId).toBe(true);
   });
 
   it('gives a new player exactly one common per clan', () => {
@@ -62,7 +61,7 @@ describe('collection rewards', () => {
 
 describe('run setup: maps and modifiers', () => {
   const base = (over: Partial<import('../src/game/defense').DefenseConfig> = {}) => ({
-    encounterId: 'moth_cloud', row: 0, deck: [], commanderId: 'ghost_bat',
+    encounterId: 'moth_cloud', row: 0, deck: [], matriarchId: 'ghost_bat',
     roster: { ghost_bat: newOwnedBat() }, relics: [], caveHp: 1000, caveMax: 1000, seed: 1, ...over,
   });
 

@@ -1,7 +1,7 @@
-# Batmobile — Game Design (v0.3: Roost Defense)
+# Batmobile — Game Design (v0.4: Matriarchs and flocks)
 
 A mobile collect-and-upgrade game crossed with a deckbuilder roguelite. You collect
-bats, level them permanently, and take a commander-led deck into runs. Each fight is
+bats, level them permanently, and take a matriarch-led flock into runs. Each fight is
 a **day/night defense**: by day you build roosts from your hand, by night the bats fly
 out and fight on their own while you hold spells as instants.
 
@@ -116,15 +116,6 @@ and it stops blocking its column. At dawn it's rebuilt at the same level with 50
   are wrecked.
 - **Leaks.** An enemy that reaches the cave hits once for 4× its attack, then is gone.
 
-**Commander.** The commander sits in the command zone and costs guano to place. It can't
-be merged, but other roosts' patterns can raise its level.
-- Unlike other roosts, a destroyed commander is **not** rebuilt at dawn. It goes back to
-  the command zone, and you can place it again on any day.
-- **Commander tax:** each placement costs +2 more than the one before (base, +2, +4…)
-  for the rest of the level, as in MTG. A re-placed commander starts at level 1.
-- On day 1 the commander card pulses until you place it. In playtests, a player who
-  skips it is the one most likely to lose the first level.
-
 **Positioning.**
 - **Terrain.** Each level has 3–4 terrain tiles. A roost on its own clan's terrain gets a
   bonus, based on where those bats really feed:
@@ -144,21 +135,31 @@ be merged, but other roosts' patterns can raise its level.
 **Enemy note.** Tiger moths jam bat sonar with ultrasonic clicks, which is real
 (Arctiinae). In the game they shrink the range of nearby bats.
 
-## 3. Deck construction — Commander rules
+## 3. Deck construction: matriarch + flock
 
-- **Commander.** A legendary bat with a 2-clan identity.
-- **Color identity → clans.** A card is legal if all its clans are within the
-  commander's identity. Colorless cards are always legal.
-- **Singleton.** One copy of each card, except **Fledglings**, the colorless
-  basic bat. Fledglings play the role of basic lands: unlimited copies, and
-  they pad the starting deck.
-- **Core.** Before a run, pick up to 8 *owned* bats legal for the commander.
-  The starting deck is the core plus Fledglings up to 8 cards. Fledglings are the
-  weakest roost per energy on purpose: basics shouldn't beat drafted cards.
-- **Cap.** 20 cards. Taking a card at the cap means removing one.
-- **Draft offers** follow the commander's identity. Offers can include bats you
-  don't own; those fight at level 1. Owned bats use their roster level. So the
-  roster still matters, and early runs aren't stuck with a tiny pool.
+v0.3 used MTG commander rules (a placed commander with tax, 2-clan identity, singleton).
+They worked against the merge system: merging needs two of the same bat, but singleton
+allowed only one of each, so every drafted card made merges rarer and the best deck was
+mostly Fledglings. The commander was one extra roost. v0.4 replaces all of it.
+
+- **Matriarch.** A legendary bat who leads the run but is never placed. She sets one rule:
+
+  | Matriarch | Rule | Basis |
+  |---|---|---|
+  | Great Flying Fox, *Seed Spreader* | every merge pays back 1 guano | seed dispersal regrows the forest |
+  | Ghost Bat, *Feeding Roost* | kills pay 1 guano per 2 (normally per 4) | carries prey back to a feeding roost |
+  | Spectral Bat, *Pair Bond* | a roost can merge into one a level above it | pairs roost together and share food |
+  | Greater Noctule, *Long Range* | the pool shows 3 cards | hunts high and far |
+
+  Levelling a matriarch adds +1 starting guano per 3 levels, so her roster level still matters.
+- **Starting flock.** Pick 3 owned species; the deck starts with 2 of each plus 2 Fledglings
+  (8 cards). Copies mean merges are possible from the first day.
+- **No singleton, no identity.** Any card can be drafted, in any number. The cap is 20.
+- **Draft offers.** About 45% of offers are another copy of a bat already in the deck, 25%
+  spells, the rest new species by rarity. The card shows "In deck: N" or "New". The choice is
+  between depth (more merges) and breadth (new patterns and clans). Card removal in the shop
+  matters now: thinning the deck raises merge odds.
+- **Clan bonuses** replace identity (see §4).
 
 ## 4. Clans (real bat diets)
 
@@ -173,8 +174,22 @@ be merged, but other roosts' patterns can raise its level.
 Vampire bats really do regurgitate blood meals to roost-mates who failed to
 feed; that's where the Sanguivore heal-on-death mechanic comes from.
 
-Starter commanders: **Great Flying Fox** (Frugivore/Nectarivore), **Ghost Bat**
-(Sanguivore/Insectivore), **Spectral Bat** (Piscivore/Sanguivore).
+**Clan bonuses.** Each clan sums the levels of its standing roosts on the field (dual-clan
+bats count for both). At 3 / 6 / 10 it unlocks a tier. Bonuses lock in at dusk.
+Counting levels, not roosts, means merging tall doesn't cost you the bonus.
+
+| Clan | Bonus (tier 1 / 2 / 3) |
+|---|---|
+| Frugivore | at dawn every roost heals 20 / 40 / 70% |
+| Insectivore | insectivores attack 15 / 30 / 50% faster |
+| Sanguivore | sanguivores +10 / 20 / 35% lifesteal |
+| Piscivore | piscivores +15 / 30 / 50% damage |
+| Nectarivore | +1 / 2 / 3 guano each dawn |
+
+The Kin Call relic (which replaced Blood Pact) adds 2 levels to every clan on the field.
+
+Starter matriarchs: **Great Flying Fox**, **Ghost Bat**, **Spectral Bat**. Greater Noctule is
+a legendary summon.
 
 ## 4b. The field guide (collection)
 
@@ -185,16 +200,14 @@ region, a fact, and a conservation note where the status is notable and well est
 | Region | Species |
 |---|---|
 | 🌲 North America | little brown, big brown, eastern red, hoary, tricolored, northern long-eared, Indiana, Townsend's big-eared, pallid, Mexican free-tailed, lesser and greater long-nosed, Mexican long-tongued |
-| 🌴 Latin America | the three vampire bats, lesser and greater bulldog, Mexican fishing bat, Pallas's long-tongued, tube-lipped nectar, Jamaican fruit, Seba's short-tailed, Geoffroy's tailless, spectral (commander) |
+| 🌴 Latin America | the three vampire bats, lesser and greater bulldog, Mexican fishing bat, Pallas's long-tongued, tube-lipped nectar, Jamaican fruit, Seba's short-tailed, Geoffroy's tailless, spectral (matriarch) |
 | 🌍 Africa | Egyptian fruit, straw-colored fruit, hammer-headed, Wahlberg's epauletted |
-| 🏔 Eurasia | brown long-eared, Daubenton's, Rickett's big-footed, greater noctule (commander) |
-| 🌏 Asia-Pacific | great flying fox, ghost bat (both commanders) |
+| 🏔 Eurasia | brown long-eared, Daubenton's, Rickett's big-footed, greater noctule (matriarch) |
+| 🌏 Asia-Pacific | great flying fox, ghost bat (both matriarchs) |
 
 - **Sanguivores stay at three.** Only three blood-feeding bat species exist, and the game
   has all of them. I'm not inventing more.
-- **Greater Noctule** is a fourth commander (Insectivore/Piscivore), available only from
-  legendary summons. It gives the new insect-eaters and water bats a commander that can
-  draft both.
+- **Greater Noctule** is a fourth matriarch, available only from legendary summons.
 - **Rewards:** milestones at 10, 15, 20, 25 and 30 species and the complete guide, plus a
   set reward for completing each region. They pay Glowbugs (more summons) and XP, so
   collecting feeds back into collecting and levelling.
@@ -205,7 +218,7 @@ region, a fact, and a conservation note where the status is notable and well est
 ## 4c. Main menu and Play screen
 
 - **Main menu:** Play, Field Guides, Summon. More will come later.
-- **Play:** choose the commander and deck core, then the map and any modifiers.
+- **Play:** choose the matriarch and starting flock, then the map and any modifiers.
   - **Maps (biomes)** change which terrain tiles appear, and so which clans thrive:
 
     | Map | Favours |
@@ -239,12 +252,12 @@ region, a fact, and a conservation note where the status is notable and well est
   shows a preview first: a ghost roost, dashed outlines on the tiles its pattern would +1
   when it later merges, or for a merge, "+1" on the target and every roost its pattern
   bumps. Tap the same tile again to confirm, or another tile to move the preview.
-- **Tutorial:** a 9-step guided first level covering the wave preview, placing the
-  commander, preview and confirm, the pool, guano, ending the day, night, and merging.
-  It's skippable, and can be replayed from the home screen. The Play screen and run map
-  show first-run hints. The tutorial level starts with +4 guano so both the commander and
-  a pool bat are affordable.
+- **Tutorial:** a 10-step guided first level covering the wave preview, picking a pool
+  card, preview and confirm, the pool, clan bonuses and the matriarch chip, guano, ending
+  the day, night, and merging. It's skippable, and can be replayed from the home screen.
+  The tutorial level starts with +2 guano so both pool bats are affordable.
 - **Save version 2** discards all older saves, so everyone starts fresh with the tutorial.
+  Commander-era v2 saves are migrated in place (commander → matriarch); progress is kept.
 
 ## 5. Run structure (unchanged from v0.1; battle nodes are now defense levels)
 
@@ -278,8 +291,8 @@ everything accrued. Beating the boss grants a large completion bonus.
 - Single pull 150, ten-pull 1500 (guaranteed rare or better).
 - Rates: Common 65%, Rare 26%, Epic 8%, Legendary 1%. Rates are shown in game.
 - Pity: an epic or better is guaranteed within 10 pulls, a legendary within 60.
-- New players pick one of the three commanders for free and get all five
-  common bats. The other commanders are legendary pulls.
+- New players pick one of the three starter matriarchs for free and get all five
+  common bats. Greater Noctule is a legendary pull.
 
 ## 9. Known tensions / to watch in playtest
 
@@ -288,16 +301,24 @@ everything accrued. Beating the boss grants a large completion bonus.
 2. **Fledgling merging.** Basics merge too, and a thin deck of Fledglings levels up
    fast. Their roosts stay weak per bat, but watch whether "merge Fledglings"
    becomes the default line.
-3. **Commander strength.** Ghost Bat (fast, area damage, lifesteal) beats Flying Fox (a
-   slow tank) in bot runs. The bot can't judge aura or pattern value, so a person needs
-   to check this.
-4. **Gacha-only acquisition.** With commander rules, off-identity pulls are worth less.
-   Dupe→XP and pity soften this.
+3. **Matriarch strength.** The bot doesn't exploit the rules (it never plans Pair Bond
+   merges or saves Seed Spreader refunds), so their relative strength needs a human check.
+4. **Matriarch levels** only add starting guano. That's thin for a legendary; watch whether
+   players feel levelling her is pointless.
 5. **XP and Glowbugs** don't compete with each other. That may be too frictionless.
 
 ## 10. Balance status (bot playtests)
 
-`tests/defense.test.ts` includes a bot that places its commander, drops pool bats onto a
+- **v0.4 (matriarch + flock):** without the commander roost, starter flocks still got
+  *stronger*: two copies of each species merge from day 1. At roster level 1, starters beat
+  the boss 6–7/8 (was 0–4/8). Enemy scaling per map row went 0.15 → 0.20, which leaves the
+  opening rows unchanged and puts the level-1 boss at 4–5/8 with a full cave (real runs
+  arrive damaged). A starter padded with six off-plan cards does worse (3/8): dilution now
+  costs you, which is the deckbuilding pressure we wanted. Level 5 still clears everything.
+- **Enemies don't rush.** v0.3 had enemies sprint at 3× through a column with no roosts
+  left. It read as wrong in play and was removed; leaks still hit for 4× attack.
+
+`tests/defense.test.ts` includes a bot that drops pool bats onto a
 matching level-1 roost (or roosts them in a threatened column), merges every same-level
 pair it can (keeping the copy in the better spot), takes spells, refreshes when it has
 spare guano, and casts damage spells when enemies get close. Each cell is 8 seeds.

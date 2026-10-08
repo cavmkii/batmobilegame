@@ -24,14 +24,12 @@ export const BALANCE = {
   night: { maxSeconds: 80, duskLead: 5, groupGap: 3, spawnGap: 0.7, leakMult: 4, dawnDelay: 2 },
   /** A roost destroyed at night is rebuilt at dawn with this fraction of its max HP. */
   rebuildHpPct: 50,
-  /** The commander instead returns to the command zone; each placement costs `tax` more than the last. */
-  commander: { tax: 2 },
   knockback: { distance: 0.5, duration: 0.4 },
   adjacency: { vampireDawnHealPct: 20 },
   /** Stats gain this fraction of base per level above 1. */
   levelScaling: 0.2,
   /** Enemy stats scale this much per map row. */
-  enemyRowScaling: 0.15,
+  enemyRowScaling: 0.2,
   evolvedMult: 1.25,
   upgradedCardMult: 1.3,
   levelCap: 10,
@@ -54,8 +52,8 @@ export const BALANCE = {
   run: {
     caveHp: 1000,
     deckCap: 20,
-    coreMax: 8,
-    startDeckSize: 8,
+    /** Starting deck: `copies` of each of `species` chosen bats, plus Fledglings. */
+    flock: { species: 3, copies: 2, fledglings: 2 },
     rows: 8,
     restHealPct: 0.3,
   },
@@ -71,5 +69,6 @@ export const BALANCE = {
     remove: 75,
     heal: 50,
   },
-  draft: { weights: { common: 60, rare: 30, epic: 10, legendary: 0 } as Record<Rarity, number>, spellChance: 0.3 },
+  /** copyChance: an offer is another copy of a bat already in the deck (merges need copies). */
+  draft: { weights: { common: 60, rare: 30, epic: 10, legendary: 0 } as Record<Rarity, number>, spellChance: 0.25, copyChance: 0.45 },
 };
