@@ -7,8 +7,9 @@ import type { RunState } from './run';
 /**
  * Bump to start everyone fresh: older saves are discarded on load.
  * v2: the Roost Defense / field guide era, and the first-play tutorial.
+ * v3: fresh start for the chapter-run saga (requested wipe).
  */
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export interface Profile {
   version: typeof SAVE_VERSION;
