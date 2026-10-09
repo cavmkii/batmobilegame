@@ -542,7 +542,7 @@ registerScreen('battle', (app) => {
     const won = d.phase === 'won';
     if (tut >= 0) finishTutorial();
     applyLevelResult(r, { shattered: d.shattered, brokenCharms: d.brokenCharms, tally: d.tally });
-    resolveBattle(r, won, d.cave.hp);
+    resolveBattle(r, won, d.cave.hp, app.profile);
     app.save();
     overlay.classList.add('show');
     overlay.replaceChildren(h('div.result-box',

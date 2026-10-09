@@ -89,16 +89,18 @@ describe('run setup: maps and modifiers', () => {
     const lean = new Defense(base({ modifiers: ['lean_times'] }));
     expect(lean.projectedIncome()).toBe(plain.projectedIncome() - 1);
 
+    // A chapter with Crumbling Cave knocks the cave down to 70% going in.
     const p = newProfile();
     chooseStarter(p, 'ghost_bat');
-    const run = startRun(p, 'ghost_bat', [], 5, { biome: 'farmland', modifiers: ['old_cave', 'swarm_season'] });
-    expect(run.biome).toBe('farmland');
-    expect(run.caveMax).toBe(700);
-    expect(p.lastSetup).toEqual({ biome: 'farmland', modifiers: ['old_cave', 'swarm_season'] });
+    p.saga.unlocked = 10;
+    const run = startRun(p, 'ghost_bat', [], 5, 10); // chapter 10: Crumbling Cave
+    expect(run.modifiers).toContain('old_cave');
+    expect(run.caveHp).toBe(700);
     run.xpEarned = 1000;
+    run.chapter = 12; // cleared two chapters this run
     run.status = 'lost';
     const res = finishRun(p, run);
-    expect(res.xp).toBe(1500); // +20% +30%
+    expect(res.xp).toBe(1500); // +25% per chapter cleared
   });
 });
 

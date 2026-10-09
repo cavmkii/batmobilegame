@@ -1,12 +1,12 @@
 import { BALANCE } from '../data/balance';
-import { BIOMES, BIOME_BY_ID, MODIFIER_BY_ID, rewardBonusPct } from '../data/setup';
+import { BIOMES, BIOME_BY_ID, MODIFIER_BY_ID } from '../data/setup';
 import { BAT_BY_ID } from '../data/bats';
 import { SPELL_BY_ID } from '../data/spells';
 import type { Card, CardMod, ClanId, Rarity } from '../data/types';
 import { CHARMS, CHARM_BY_ID, CHARM_PRICE, CHARM_SLOTS, charmSellValue } from '../data/charms';
 import { ENHANCEMENTS, ENHANCE_BY_ID, isSharp } from '../data/enhance';
 import { FORMATIONS, type FormationId } from '../data/formations';
-import { GOALS, SAGA_ROWS, sagaMaxDepth, sagaNode, type GoalId, type ObjectiveId } from '../data/saga';
+import { CHAPTER_ROWS, CHECKPOINT_FIGS, GOALS, sagaNode, type GoalId, type ObjectiveId } from '../data/saga';
 import { buildStartingDeck, draftPool, newCard, validateSetup } from './deck';
 import { treeEffects, treeSum } from './matriarchTree';
 import { generateMap, type MapNode, type RunMap } from './map';
@@ -63,48 +63,40 @@ export interface RunState {
   charmOffer: string[] | null;
   /** A star chart offered after a battle (instead of a card). */
   chartOffer: FormationId | null;
-  /** Saga node number, if this run is a saga node. */
-  saga?: number;
+  /** The chapter being played (the run continues chapter after chapter until it's lost). */
+  chapter: number;
+  /** Chapter the run started from (a checkpoint). */
+  startChapter: number;
+  /** The boss of this chapter has fallen: the next leaveNode moves to the next chapter. */
+  chapterCleared?: boolean;
+  /** This chapter's twists. */
   restrict?: ClanId;
   objective?: ObjectiveId;
   difficulty?: number;
-  /** Star-goal bookkeeping across the run. */
+  /** Star-goal bookkeeping for the current chapter. */
   tally: { leaks: number; rerolls: number; maxRoosts: number; maxLevel: number; wrecks: number };
 }
 
 export const runRng = (run: RunState) => new Rng(run.rngState);
 const saveRng = (run: RunState, rng: Rng) => (run.rngState = rng.state);
 
-export interface RunSetup {
-  biome?: string;
-  modifiers?: string[];
-  /** Play this saga node (its biome, modifiers and twists override the above). */
-  saga?: number;
-}
-
-export function startRun(p: Profile, matriarchId: string, flock: string[], seed: number, setup: RunSetup = {}): RunState {
-  const node = setup.saga ? sagaNode(setup.saga) : null;
-  const err = validateSetup(p, matriarchId, flock, node?.restrict);
+/**
+ * Start a run at a chapter (1, or any checkpoint reached). Later checkpoints come with supplies:
+ * figs, and a free charm pick shown on the map.
+ */
+export function startRun(p: Profile, matriarchId: string, flock: string[], seed: number, chapter = 1): RunState {
+  chapter = Math.max(1, Math.min(chapter, p.saga.unlocked));
+  const err = validateSetup(p, matriarchId, flock, sagaNode(chapter).restrict);
   if (err) throw new Error(err);
-  const rng = new Rng(seed);
-  const map = node ? generateMap(rng, SAGA_ROWS, node.bossRule, sagaMaxDepth(node.n)) : generateMap(rng);
-  const modifiers = (node ? node.modifiers : setup.modifiers ?? []).filter((id) => MODIFIER_BY_ID[id]);
-  if (node) setup = { ...setup, biome: node.biome };
-  let cave = BALANCE.run.caveHp;
-  for (const id of modifiers) {
-    const e = MODIFIER_BY_ID[id].effect;
-    if (e.kind === 'caveHp') cave = Math.round(cave * (1 + e.pct / 100));
-  }
+  const cave = BALANCE.run.caveHp;
   const run: RunState = {
-    rngState: rng.state,
+    rngState: seed,
     matriarchId,
-    biome: BIOME_BY_ID[setup.biome ?? ''] ? setup.biome! : BIOMES[0].id,
-    modifiers,
     deck: buildStartingDeck(flock),
     caveHp: cave,
     caveMax: cave,
-    figs: 0,
-    map,
+    figs: CHECKPOINT_FIGS * (chapter - 1),
+    map: { nodes: {}, rows: [] },
     currentNode: null,
     activeNode: null,
     cleared: [],
@@ -119,18 +111,49 @@ export function startRun(p: Profile, matriarchId: string, flock: string[], seed:
     formations: {},
     charmOffer: null,
     chartOffer: null,
-    saga: node?.n,
-    restrict: node?.restrict,
-    objective: node?.objective,
-    difficulty: node?.difficulty,
+    chapter,
+    startChapter: chapter,
     tally: { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0, wrecks: 0 },
   };
+  enterChapter(run, chapter);
+  if (chapter > 1) {
+    const rng = runRng(run);
+    run.charmOffer = charmOffers(run, rng, 2); // supply cache, on the map
+    saveRng(run, rng);
+  }
   p.flock = [...flock];
   p.lastMatriarch = matriarchId;
-  p.lastSetup = { biome: run.biome!, modifiers: [...modifiers] };
   p.stats.runs++;
   return run;
 }
+
+/** Set up a chapter: its map, biome, twists and difficulty. The deck, charms and cave carry over. */
+export function enterChapter(run: RunState, n: number) {
+  const node = sagaNode(n);
+  const rng = runRng(run);
+  run.chapter = n;
+  run.map = generateMap(rng, CHAPTER_ROWS, node.bossRule);
+  run.biome = BIOME_BY_ID[node.biome] ? node.biome : BIOMES[0].id;
+  run.modifiers = node.modifiers.filter((id) => MODIFIER_BY_ID[id]);
+  run.restrict = node.restrict;
+  run.objective = node.objective;
+  run.difficulty = node.difficulty;
+  run.currentNode = null;
+  run.activeNode = null;
+  run.cleared = [];
+  run.chapterCleared = false;
+  run.tally = { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0, wrecks: 0 };
+  // Crumbling Cave: the cave loses part of its strength going in.
+  for (const id of run.modifiers) {
+    const e = MODIFIER_BY_ID[id].effect;
+    if (e.kind === 'caveHp') run.caveHp = Math.max(1, Math.min(run.caveHp, Math.round(run.caveMax * (1 + e.pct / 100))));
+  }
+  saveRng(run, rng);
+}
+
+/** Global depth reached: levels of every chapter before this one, plus rows cleared here. */
+export const runDepth = (run: RunState) =>
+  (run.chapter - 1) * CHAPTER_ROWS + Math.max(0, ...run.cleared.map((id) => run.map.nodes[id].row + 1));
 
 export function availableNodes(run: RunState): MapNode[] {
   if (run.status !== 'active' || run.activeNode) return [];
@@ -161,6 +184,7 @@ export function leaveNode(run: RunState) {
   run.draft = null;
   run.charmOffer = null;
   run.chartOffer = null;
+  if (run.chapterCleared) enterChapter(run, run.chapter + 1);
 }
 
 export function combatRewards(type: MapNode['type'], row: number) {
@@ -174,7 +198,7 @@ export function combatRewards(type: MapNode['type'], row: number) {
 }
 
 /** Called when a battle on the active node ends. */
-export function resolveBattle(run: RunState, won: boolean, caveHpLeft: number) {
+export function resolveBattle(run: RunState, won: boolean, caveHpLeft: number, p?: Profile) {
   const node = run.map.nodes[run.activeNode!];
   run.caveHp = Math.max(0, Math.round(caveHpLeft));
   if (!won) {
@@ -190,7 +214,15 @@ export function resolveBattle(run: RunState, won: boolean, caveHpLeft: number) {
     if (e?.kind === 'healAfterBattle') heal(run, e.amount);
   }
   if (node.type === 'boss') {
-    run.status = 'won';
+    // The chapter's boss falls: stars, checkpoint, and a big reward; the run goes on.
+    run.chapterCleared = true;
+    if (p) clearChapter(p, run);
+    const rng = runRng(run);
+    run.figs += 50;
+    heal(run, run.caveMax * 0.25);
+    run.draft = draftOffers(run, rng, 3, true);
+    run.charmOffer = charmOffers(run, rng, 3);
+    saveRng(run, rng);
     return;
   }
   const rng = runRng(run);
@@ -277,7 +309,7 @@ function rollRarity(rng: Rng): Rarity {
  * Up to n distinct offers. Some are copies of bats already in the deck (merging needs copies),
  * the rest are new species by rarity, or spells.
  */
-export function draftOffers(run: RunState, rng: Rng, n: number): Offer[] {
+export function draftOffers(run: RunState, rng: Rng, n: number, rareOnly = false): Offer[] {
   const all = draftPool();
   const pool = { ...all, bats: run.restrict ? all.bats.filter((b) => BAT_BY_ID[b].clans.includes(run.restrict!)) : all.bats };
   const owned = [...new Set(run.deck.filter((c) => c.kind === 'bat' && !BAT_BY_ID[c.id].basic).map((c) => c.id))];
@@ -291,7 +323,7 @@ export function draftOffers(run: RunState, rng: Rng, n: number): Offer[] {
     } else if (roll < BALANCE.draft.copyChance + BALANCE.draft.spellChance) {
       o = { kind: 'spell', id: rng.pick(pool.spells) };
     } else {
-      const rarity = rollRarity(rng);
+      const rarity = rareOnly ? rng.pick<Rarity>(['rare', 'rare', 'epic']) : rollRarity(rng);
       const bats = pool.bats.filter((b) => BAT_BY_ID[b].rarity === rarity);
       if (!bats.length) continue;
       o = { kind: 'bat', id: rng.pick(bats) };
@@ -571,26 +603,29 @@ export function cardName(c: Pick<Card, 'kind' | 'id' | 'upgraded' | 'mod'>): str
 }
 
 /** Bank the run's rewards into the profile and close the run. */
-export function finishRun(p: Profile, run: RunState): { xp: number; glow: number; cleared: boolean; stars: number; saga?: number } {
-  const cleared = run.status === 'won';
-  const mult = (cleared ? BALANCE.rewards.clearBonusMult : 1) * (1 + rewardBonusPct(run.modifiers ?? []) / 100);
+/** Stars, checkpoint and first-clear bonus when a chapter's boss falls. */
+export function clearChapter(p: Profile, run: RunState) {
+  const node = sagaNode(run.chapter);
+  const stars = 1 + node.goals.filter((g) => goalMet(run, g)).length;
+  p.saga.stars[run.chapter] = Math.max(p.saga.stars[run.chapter] ?? 0, stars);
+  if (run.chapter >= p.saga.unlocked) {
+    p.saga.unlocked = run.chapter + 1;
+    p.glow += 100 + 25 * run.chapter; // first clear
+  }
+  p.stats.clears++;
+  return stars;
+}
+
+/** Bank the run's rewards when it ends (the cave fell, or it was abandoned). */
+export function finishRun(p: Profile, run: RunState): { xp: number; glow: number; chapter: number; depth: number; startChapter: number; checkpoint: number } {
+  const chaptersCleared = Math.max(0, run.chapter - run.startChapter);
+  const mult = 1 + 0.25 * chaptersCleared;
   const xp = Math.round(run.xpEarned * mult);
   const glow = Math.round(run.glowEarned * mult);
   p.xp += xp;
   p.glow += glow;
-  if (cleared) p.stats.clears++;
-  let stars = 0;
-  if (run.saga) {
-    const node = sagaNode(run.saga);
-    stars = cleared ? 1 + node.goals.filter((g) => goalMet(run, g)).length : 0;
-    p.saga.stars[run.saga] = Math.max(p.saga.stars[run.saga] ?? 0, stars);
-    if (cleared && run.saga >= p.saga.unlocked) {
-      p.saga.unlocked = run.saga + 1;
-      p.glow += 100 + 10 * run.saga; // first-clear bonus
-    }
-  }
-  const depth = Math.max(0, ...run.cleared.map((id) => run.map.nodes[id].row + 1));
+  const depth = runDepth(run);
   p.stats.bestRow = Math.max(p.stats.bestRow, depth);
   p.run = undefined;
-  return { xp, glow, cleared, stars, saga: run.saga };
+  return { xp, glow, chapter: run.chapter, depth, startChapter: run.startChapter, checkpoint: p.saga.unlocked };
 }

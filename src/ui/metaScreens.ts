@@ -3,7 +3,7 @@ import { BATS, BAT_BY_ID, STARTER_COMMONS, STARTER_MATRIARCHS } from '../data/ba
 import { CLANS, CLAN_ORDER, RARITY_COLOR } from '../data/clans';
 import { BOSS_RULE_BY_ID } from '../data/bossRules';
 import { FORMATIONS } from '../data/formations';
-import { GOALS, OBJECTIVES, sagaNode, type SagaNode } from '../data/saga';
+import { CHECKPOINT_FIGS, GOALS, OBJECTIVES, sagaNode, type SagaNode } from '../data/saga';
 import { BIOME_BY_ID, MODIFIER_BY_ID } from '../data/setup';
 import { MATRIARCH_BY_ID } from '../data/matriarchs';
 import { TREE_LINKS, treeNodes } from '../data/matriarchTree';
@@ -21,7 +21,6 @@ import { startRun } from '../game/run';
 import { COLLECTABLE, MILESTONES, REGION, REGION_ICON, REGION_SETS, REGIONS, STATUS, regionMembers, type Reward } from '../data/fieldguide';
 import { claim, claimable, ownedSet } from '../game/collection';
 import { ENEMIES } from '../data/enemies';
-import { BIOMES, MODIFIERS, rewardBonusPct } from '../data/setup';
 import { enemyImageUrl } from '../render/pixel';
 import { registerScreen, type App } from './app';
 import { batImg, clanPips, currencyBar, fmt, header, patternGrid } from './components';
@@ -65,10 +64,8 @@ registerScreen('home', (app) => {
     h('div.hero', h('h1.title', 'BATMOBILE'), wallet(app)),
     h('div.menu',
       h('button.big.primary.main-btn', { onclick: () => app.go({ name: p.run ? 'map' : 'saga' }) },
-        h('span.mb-icon', '▶'), h('span', p.run ? 'Continue run' : 'Saga'),
-        h('span.mb-sub', p.run ? (p.run.saga ? `Node ${p.run.saga} in progress` : 'A custom run is in progress') : `Node ${p.saga.unlocked}: ${sagaNode(p.saga.unlocked).name} · ★${totalStars(p.saga.stars)}`)),
-      !p.run ? h('button.big.main-btn', { onclick: () => app.go({ name: 'prep' }) },
-        h('span.mb-icon', '🎲'), h('span', 'Custom run'), h('span.mb-sub', 'Pick a map and modifiers; the long 8-row act')) : null,
+        h('span.mb-icon', '▶'), h('span', p.run ? 'Continue run' : 'Play'),
+        h('span.mb-sub', p.run ? `Chapter ${p.run.chapter}: ${sagaNode(p.run.chapter).name}` : `Checkpoint: chapter ${p.saga.unlocked} · ★${totalStars(p.saga.stars)}`)),
       h('button.big.main-btn', { onclick: () => app.go({ name: 'guides' }) },
         h('span.mb-icon', '📖'), h('span', 'Field Guides'), h('span.mb-sub', `Bats ${owned}/${total}`),
         claimable(p).length ? h('span.badge', claimable(p).length) : null),
@@ -76,7 +73,7 @@ registerScreen('home', (app) => {
         h('span.mb-icon', '🦇'), h('span', 'Summon'), h('span.mb-sub', `🪲 ${fmt(p.glow)}`),
         p.pendingDupes.length ? h('span.badge', p.pendingDupes.length) : null),
     ),
-    h('div.stats.muted', `Runs ${p.stats.runs} · Clears ${p.stats.clears} · Best depth ${p.stats.bestRow}/${BALANCE.run.rows} · Pulls ${p.stats.pulls}`),
+    h('div.stats.muted', `Runs ${p.stats.runs} · Bosses beaten ${p.stats.clears} · Deepest level ${p.stats.bestRow} · Pulls ${p.stats.pulls}`),
     h('div.center',
       p.tutorialDone ? h('button.ghost.small', { onclick: () => { p.tutorialDone = false; app.save(); toast('The tutorial will play in your next level.'); } }, 'Replay tutorial') : null,
       h('button.ghost.small', { onclick: () => backupDialog(app) }, 'Back up / restore save'),
@@ -412,24 +409,21 @@ registerScreen('summon', (app) => {
 
 registerScreen('prep', (app, sc) => {
   const p = app.profile;
-  const node = sc.saga ? sagaNode(sc.saga) : null;
+  const node = sagaNode(Math.min(sc.chapter ?? p.saga.unlocked, p.saga.unlocked));
   const matriarchs = Object.keys(p.roster).filter((id) => BAT_BY_ID[id]?.matriarch && MATRIARCH_BY_ID[id]);
   let mat = p.lastMatriarch && matriarchs.includes(p.lastMatriarch) ? p.lastMatriarch : matriarchs[0];
-  const options = flockOptions(p).filter((id) => !node?.restrict || BAT_BY_ID[id].clans.includes(node.restrict)).sort((a, b) => rank(a) - rank(b));
+  const options = flockOptions(p).filter((id) => !node.restrict || BAT_BY_ID[id].clans.includes(node.restrict)).sort((a, b) => rank(a) - rank(b));
   const F = BALANCE.run.flock;
   let flock = (p.flock ?? []).filter((id) => options.includes(id)).slice(0, F.species);
   if (!p.flock || !flock.length) flock = options.slice(0, F.species);
-  let biome = p.lastSetup?.biome ?? BIOMES[0].id;
-  let mods: string[] = [...(p.lastSetup?.modifiers ?? [])];
-
   const body = h('div');
   const render = () => {
-    const err = validateSetup(p, mat, flock, node?.restrict);
+    const err = validateSetup(p, mat, flock, node.restrict);
     const m = MATRIARCH_BY_ID[mat];
     const fledglings = F.species * F.copies + F.fledglings - flock.length * F.copies;
     body.replaceChildren(
       !p.tutorialDone ? h('div.coach', h('div.coach-step', 'First run'), h('div', 'Your matriarch and starting flock are already picked. Tap Begin run at the bottom.')) : '',
-      node ? nodeCard(node, p.saga.stars[node.n] ?? 0) : '',
+      nodeCard(node, p.saga.stars[node.n] ?? 0),
       h('h2', 'Matriarch'),
       h('div.commander-row', ...matriarchs.map((id) => h(`button.cmd-pick${id === mat ? '.selected' : ''}`, {
         onclick: () => { mat = id; render(); },
@@ -456,31 +450,19 @@ registerScreen('prep', (app, sc) => {
         h('p.muted.small', 'Shapes on the roost grid that stand at dusk give a bonus for the night. Star charts level them up for the run.'),
         ...FORMATIONS.map((f) => h('div.small', h('b', `${f.icon} ${f.name}`), `: ${f.shape}. `, h('span.muted', f.text(f.base)))),
       ),
-      node ? '' : h('h2', 'Map'),
-      node ? '' : h('div.choice-list', ...BIOMES.map((b) => h(`button.choice${b.id === biome ? '.selected' : ''}`, {
-        onclick: () => { biome = b.id; render(); },
-      }, h('span.choice-icon', b.icon), h('div', h('b', b.name), h('div.small.muted', b.desc))))),
-      node ? '' : h('h2', 'Modifiers'),
-      node ? '' : h('p.muted.small', 'Optional. Each one makes the run harder and adds to its rewards.'),
-      node ? '' : h('div.choice-list', ...MODIFIERS.map((m) => {
-        const on = mods.includes(m.id);
-        return h(`button.choice${on ? '.selected' : ''}`, {
-          onclick: () => { mods = on ? mods.filter((x) => x !== m.id) : [...mods, m.id]; render(); },
-        }, h('span.choice-icon', m.icon), h('div', h('b', m.name), h('div.small.muted', m.desc)), h('span.tag', `+${m.bonusPct}%`));
-      })),
       err ? h('p.error', err) : '',
       h('button.big.primary', {
         disabled: !!err,
         onclick: () => {
-          p.run = startRun(p, mat, flock, newSeed(), node ? { saga: node.n } : { biome, modifiers: mods });
+          p.run = startRun(p, mat, flock, newSeed(), node.n);
           app.save();
           app.go({ name: 'map' });
         },
-      }, 'Begin run', !node && rewardBonusPct(mods) ? h('div.small', `Rewards +${rewardBonusPct(mods)}%`) : null),
+      }, node.n > 1 ? `Begin at chapter ${node.n}` : 'Begin run', node.n > 1 ? h('div.small', `Checkpoint supplies: 🫐 ${CHECKPOINT_FIGS * (node.n - 1)} and a free charm`) : null),
     );
   };
   render();
-  return h('div.screen', header(node ? `Node ${node.n}` : 'Custom run', () => app.go({ name: node ? 'saga' : 'home' })), body);
+  return h('div.screen', header(`Chapter ${node.n}`, () => app.go({ name: 'saga' })), body);
 });
 
 // ---------------- Saga map ----------------
@@ -506,23 +488,25 @@ function nodeCard(node: SagaNode, stars: number) {
     ),
     h('div.small', '★ Clear the boss', ...node.goals.map((g) => h('div', `★ ${GOALS[g].name}: ${GOALS[g].desc}`))),
     node.objective ? h('div.small.muted', `${OBJECTIVES[node.objective].name}: ${OBJECTIVES[node.objective].desc}`) : '',
+    node.restrict ? h('div.small.muted', `In this chapter, drafts and shops only offer ${CLANS[node.restrict].name} bats.`) : '',
   );
 }
 
 registerScreen('saga', (app) => {
   const p = app.profile;
   const top = p.saga.unlocked + 2;
-  const nodes: Node[] = [];
+  const rows: Node[] = [];
   for (let n = top; n >= 1; n--) {
     const node = sagaNode(n);
     const open = n <= p.saga.unlocked;
     const stars = p.saga.stars[n] ?? 0;
     const current = n === p.saga.unlocked;
-    nodes.push(h(`div.saga-row.${n % 2 ? 'l' : 'r'}`,
+    rows.push(h(`div.saga-row.${n % 2 ? 'l' : 'r'}`,
       h(`button.saga-node${open ? '' : '.locked'}${current ? '.current' : ''}${stars ? '.done' : ''}`, {
-        onclick: () => (open ? app.go({ name: 'prep', saga: n }) : toast('Clear the node before it to unlock this one.')),
+        onclick: () => (open ? app.go({ name: 'prep', chapter: n }) : toast('Beat the boss of the chapter before to make this a checkpoint.')),
       }, h('span.sn-n', n), h('span.sn-stars', open ? starsText(stars) : '🔒')),
       h('div.saga-label', h('b', node.name), h('div.small.muted', [
+        open ? (n === 1 ? 'start' : '⚑ checkpoint') : '',
         node.restrict ? `${CLANS[node.restrict].name}s only` : '',
         node.objective ? `${OBJECTIVES[node.objective].icon} ${OBJECTIVES[node.objective].name.toLowerCase()}` : '',
         ...node.modifiers.map((id) => MODIFIER_BY_ID[id]?.icon ?? ''),
@@ -530,11 +514,12 @@ registerScreen('saga', (app) => {
       ].filter(Boolean).join(' · '))),
     ));
   }
-  const list = h('div.saga-path', ...nodes);
+  const list = h('div.saga-path', ...rows);
   setTimeout(() => list.querySelector('.current')?.scrollIntoView({ block: 'center' }), 30);
   return h('div.screen',
     header('Saga', () => app.go({ name: 'home' }), h('span.tag', `★ ${totalStars(p.saga.stars)}`)),
-    h('p.muted.small.center', 'Each node is a short run: a few levels and a boss. Your bats, levels and skills carry over; each run\'s deck, charms and star charts start fresh. The path never ends.'),
+    p.run ? h('button.big.primary', { onclick: () => app.go({ name: 'map' }) }, `Continue run: chapter ${p.run.chapter}`) : null,
+    h('p.muted.small.center', 'A run climbs chapter after chapter until the cave falls. Each chapter is about 10 levels that end in a boss. Beat a boss and the next chapter becomes a checkpoint you can start new runs from. Your deck, charms and star charts last the whole run; bats, levels and skills last forever.'),
     list,
   );
 });

@@ -82,6 +82,11 @@ function migrate(p: Profile) {
   }
   p.saga ??= { unlocked: 1, stars: {} };
   if (p.run) {
+    // Runs from before chapters: treat them as a run of the chapter they were on.
+    const old = p.run as typeof p.run & { saga?: number };
+    p.run.chapter ??= old.saga ?? 1;
+    p.run.startChapter ??= p.run.chapter;
+    delete old.saga;
     // Runs started before charms and the saga.
     p.run.charms ??= [];
     p.run.formations ??= {};

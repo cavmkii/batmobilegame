@@ -4,10 +4,12 @@ import { BIOMES } from './setup';
 import type { ClanId } from './types';
 
 /**
- * The saga map: an endless path of nodes, each a short run (a few levels and a boss) with a fixed
- * twist. Your collection carries between nodes; each run's deck, charms and star charts don't.
- * The first nodes are hand-made; after that they're generated from the node number, with
- * difficulty climbing like Balatro's stakes.
+ * The saga: an endless chain of chapters. A run starts at a chapter and keeps going, chapter after
+ * chapter, until the cave falls (Balatro antes). Each chapter is a branching map of about 10 levels
+ * that all funnel into one boss (the "boss blind"). Beating a boss makes the next chapter a
+ * checkpoint new runs can start from. The deck, charms and star charts carry through the whole run.
+ * The first chapters are hand-made; after that they're generated from the chapter number.
+ * (Code still says "saga node" for a chapter.)
  */
 export type GoalId = 'noLeak' | 'healthy' | 'unbroken' | 'small' | 'tall';
 
@@ -65,8 +67,12 @@ const AUTHORED: Authored[] = [
 
 export const AUTHORED_COUNT = AUTHORED.length;
 
-/** Enemy strength by node: flat for the first three, then climbing; generated nodes keep climbing. */
-export const sagaDifficulty = (n: number) => 1 + 0.05 * Math.max(0, n - 3);
+/**
+ * Enemy strength by chapter. Inside a chapter, enemies also scale by row (BALANCE.enemyRowScaling),
+ * so each chapter starts a notch below the last boss and climbs past it.
+ */
+export const sagaDifficulty = (n: number) => 1 + CHAPTER_STEP * (n - 1);
+export const CHAPTER_STEP = 0.55;
 
 const GEN_NAMES = ['Deep Karst', 'Sinkhole', 'Old Mine', 'Bridge Span', 'Hollow Oak', 'Sea Cave', 'Lava Tube', 'Church Loft', 'Bamboo Grove', 'Canyon Wall'];
 const RESTRICTS: (ClanId | undefined)[] = [undefined, undefined, undefined, 'INS', 'FRU', 'SAN', 'PIS', 'NEC'];
@@ -99,8 +105,8 @@ function toRoman(k: number): string {
   return r[k] ?? String(k);
 }
 
-/** How deep (on the 8-row difficulty scale) a node's boss sits: the first nodes ramp up to the full act. */
-export const sagaMaxDepth = (n: number) => Math.min(7, 2 + n);
+/** Rows in a chapter's map: 10 rows of levels and stops, then the boss. */
+export const CHAPTER_ROWS = 11;
 
-/** Rows in a saga run's map: battle, mixed, battle/elite, mixed, rest, boss. */
-export const SAGA_ROWS = 6;
+/** Figs a run starting at a later checkpoint begins with (per chapter skipped). */
+export const CHECKPOINT_FIGS = 60;

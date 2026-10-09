@@ -9,7 +9,7 @@ export type Screen =
   | { name: 'bestiary' }
   | { name: 'bat'; id: string }
   | { name: 'summon' }
-  | { name: 'prep'; saga?: number }
+  | { name: 'prep'; chapter?: number }
   | { name: 'saga' }
   | { name: 'map' }
   | { name: 'deck' }
@@ -18,7 +18,7 @@ export type Screen =
   | { name: 'shop' }
   | { name: 'rest' }
   | { name: 'event'; message?: string }
-  | { name: 'runEnd'; xp: number; glow: number; cleared: boolean; depth: number; stars?: number; saga?: number };
+  | { name: 'runEnd'; xp: number; glow: number; chapter: number; depth: number; startChapter: number; checkpoint: number };
 
 export interface App {
   profile: Profile;
