@@ -24,7 +24,7 @@ describe('matriarch and starting flock', () => {
   it('validates the setup', () => {
     const p = starter('ghost_bat');
     expect(validateSetup(p, 'ghost_bat', ['little_brown', 'egyptian_fruit', 'pallas_tongue'])).toBeNull();
-    expect(validateSetup(p, 'ghost_bat', ['little_brown', 'egyptian_fruit', 'pallas_tongue', 'lesser_bulldog'])).toMatch(/up to/);
+    expect(validateSetup(p, 'ghost_bat', ['little_brown', 'egyptian_fruit', 'pallas_tongue', 'lesser_bulldog', 'common_vampire'])).toMatch(/up to/);
     expect(validateSetup(p, 'ghost_bat', ['little_brown', 'little_brown'])).toMatch(/once/);
     expect(validateSetup(p, 'ghost_bat', ['hammerhead'])).toMatch(/collection/);
     expect(validateSetup(p, 'flying_fox', [])).toMatch(/own/);
@@ -139,8 +139,8 @@ describe('run flow', () => {
   it('starts, clears a battle, drafts, and banks rewards on loss', () => {
     const p = starter('ghost_bat');
     const run = startRun(p, 'ghost_bat', ['little_brown', 'common_vampire'], 42);
-    expect(run.deck.length).toBe(8);
-    expect(run.deck.filter((c) => c.id === 'fledgling').length).toBe(4);
+    expect(run.deck.length).toBe(16);
+    expect(run.deck.filter((c) => c.id === 'fledgling').length).toBe(10);
     expect(p.flock).toEqual(['little_brown', 'common_vampire']);
 
     const first = availableNodes(run)[0];

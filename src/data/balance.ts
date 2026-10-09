@@ -10,7 +10,7 @@ export const BALANCE = {
    * Dawn income = perDawn + 1 per batsPerGuano bats housed in standing roosts (+ Clusters, interest, charms).
    * Roosts are the economy: early on it's a grind; investing in bats raises income, spells and rerolls don't.
    */
-  economy: { startGuano: 6, perDawn: 2, batsPerGuano: 2, refreshCost: 2, poolSize: 2, spellHandMax: 3 },
+  economy: { startGuano: 6, perDawn: 2, batsPerGuano: 2, refreshCost: 2, poolSize: 3, spellHandMax: 3 },
   /** Spells live in their own hand, not the pool: draw `startHand` at the start of a level, +1 each dawn. */
   spells: { startHand: 2, perDawn: 1 },
   /** Unspent guano earns interest at dawn: +1 per `per`, up to `cap` (Balatro-style). */
@@ -61,9 +61,9 @@ export const BALANCE = {
   },
   run: {
     caveHp: 1000,
-    deckCap: 20,
+    deckCap: 40,
     /** Starting deck: `copies` of each of `species` chosen bats, plus Fledglings. */
-    flock: { species: 3, copies: 2, fledglings: 2 },
+    flock: { species: 4, copies: 3, fledglings: 4 },
     rows: 8,
     restHealPct: 0.3,
   },
