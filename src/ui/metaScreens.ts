@@ -3,17 +3,19 @@ import { BATS, BAT_BY_ID, STARTER_COMMONS, STARTER_MATRIARCHS } from '../data/ba
 import { CLANS, CLAN_ORDER, RARITY_COLOR } from '../data/clans';
 import { BOSS_RULE_BY_ID } from '../data/bossRules';
 import { FORMATIONS } from '../data/formations';
-import { GOALS, sagaNode, type SagaNode } from '../data/saga';
+import { GOALS, OBJECTIVES, sagaNode, type SagaNode } from '../data/saga';
 import { BIOME_BY_ID, MODIFIER_BY_ID } from '../data/setup';
-import { MATRIARCH_BY_ID, MATRIARCH_GUANO_EVERY, matriarchGuano } from '../data/matriarchs';
+import { MATRIARCH_BY_ID } from '../data/matriarchs';
+import { TREE_LINKS, treeNodes } from '../data/matriarchTree';
+import { allocate, allocated, canAllocate, canRefund, pointsLeft, refund, treePoints } from '../game/matriarchTree';
 import { flockOptions, validateSetup } from '../game/deck';
 import { canTakePlus, pull, resolveDupe, type PullResult } from '../game/gacha';
 import { chooseStarter, exportSave, importSave, resetProfile } from '../game/profile';
 import {
-  attackLabel, blueprint, canEvolve, canLevelUp, canTalent, chooseSkill, describeTrait, displayName, dupeXp, evolveCost, levelCap, levelUpCost,
-  skillsReady, talentCost,
+  attackLabel, blueprint, canEvolve, canLevelUp, chooseSkill, describeTrait, displayName, dupeXp, evolveCost, forkUnlocked, levelCap, levelUpCost,
+  skillTree, skillsReady,
 } from '../game/progression';
-import { SKILL_LEVELS, SKILL_TREES, describeSkill } from '../data/skills';
+import { EVOLVED_FORK, SKILL_LEVELS, describeSkill } from '../data/skills';
 import { Rng, newSeed } from '../game/rng';
 import { startRun } from '../game/run';
 import { COLLECTABLE, MILESTONES, REGION, REGION_ICON, REGION_SETS, REGIONS, STATUS, regionMembers, type Reward } from '../data/fieldguide';
@@ -271,7 +273,7 @@ registerScreen('bat', (app, s) => {
     ),
     def.matriarch ? null : h('p.small', attackLabel(bp.traits, bp.stats.range)),
     def.matriarch ? h('p', h('b', MATRIARCH_BY_ID[s.id].rule), ' ', h('span.muted', MATRIARCH_BY_ID[s.id].why)) : null,
-    def.matriarch ? h('p.small', `Matriarchs don't fight. Every ${MATRIARCH_GUANO_EVERY} levels she adds +1 starting guano to each level of a run she leads (now +${matriarchGuano(o.level, o.plus)}).`) : null,
+    def.matriarch ? matriarchTreeView(app, s.id) : null,
     bp.traits.length && !def.matriarch ? h('ul.traits', ...bp.traits.map((t) => h('li', describeTrait(t)))) : null,
     h('p.fact', '🦇 ', def.fact),
     h('div.actions',
@@ -282,36 +284,78 @@ registerScreen('bat', (app, s) => {
           `Evolve → ${def.evolved.name}  ✨${fmt(evolveCost(def))}`, o.level < BALANCE.levelCap ? h('div.small', `Needs Lv ${BALANCE.levelCap}`) : null)
         : null,
     ),
-    SKILL_TREES[s.id] ? h('section',
+    skillTree(s.id) ? h('section',
       h('h2', 'Skill tree'),
-      h('p.muted.small', `A choice unlocks at Lv ${SKILL_LEVELS.join(', ')}. Pick one skill from each pair; you can switch any time between levels.`),
-      ...SKILL_TREES[s.id].map((pair, fork) => {
-        const need = SKILL_LEVELS[fork];
-        const open = o.level >= need;
+      h('p.muted.small', `A choice unlocks at Lv ${SKILL_LEVELS.join(', ')}, and one more when the bat evolves. Pick one skill from each pair; you can switch any time between levels.`),
+      ...skillTree(s.id)!.map((pair, fork) => {
+        const open = forkUnlocked(o, fork);
+        const label = fork === EVOLVED_FORK ? '★' : `Lv ${SKILL_LEVELS[fork]}`;
         const picked = o.skills?.[fork];
         return h(`div.skill-fork${open ? '' : '.locked'}`,
-          h('div.sf-lvl', open ? `Lv ${need}` : `🔒${need}`),
+          h('div.sf-lvl', open ? label : `🔒${fork === EVOLVED_FORK ? '★' : SKILL_LEVELS[fork]}`),
           ...pair.map((node, i) => h(`button.skill${picked === i ? '.chosen' : ''}`, {
             disabled: !open,
             onclick: act(() => chooseSkill(o, fork, i as 0 | 1)),
           }, h('b', node.name), h('div.small', describeSkill(node.effect, describeTrait)))),
         );
       }),
+      h('p.muted.small', '★ unlocks when the bat evolves.'),
       skillsReady(s.id, o) ? h('p.small.accent', 'A skill is ready: pick one above.') : null,
-    ) : null,
-    !def.basic ? h('section',
-      h('h2', 'Talents'),
-      !o.evolved ? h('p.muted', 'Unlocked after evolution.') : null,
-      ...def.talents.map((t, i) => h('div.talent',
-        h('div', h('b', t.name), h('div.muted', t.desc)),
-        o.talents[i]
-          ? h('span.tag', 'Learned')
-          : h('button', { disabled: !canTalent(def, o, i as 0 | 1, p.xp), onclick: act(() => { p.xp -= talentCost(def); o.talents[i] = true; }) }, `✨${fmt(talentCost(def))}`),
-      )),
     ) : null,
     def.evolved.trait ? h('p.muted.small', `Evolved form gains: ${describeTrait(def.evolved.trait)}. Stats ×${BALANCE.evolvedMult}.`) : null,
   );
 });
+
+// ---------------- Matriarch passive tree ----------------
+
+let treeSel: string | null = null;
+
+/** The matriarch's passive tree: tap a node to see it, then allocate or refund. */
+function matriarchTreeView(app: App, id: string) {
+  const o = app.profile.roster[id];
+  const nodes = treeNodes(id);
+  const have = allocated(id, o);
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', '0 0 100 100');
+  svg.setAttribute('preserveAspectRatio', 'none');
+  svg.classList.add('mt-links');
+  for (const [a, b] of TREE_LINKS) {
+    const na = nodes.find((n) => n.id === a);
+    const nb = nodes.find((n) => n.id === b);
+    if (!na || !nb) continue;
+    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    line.setAttribute('x1', String(na.x * 100));
+    line.setAttribute('y1', String(na.y * 100));
+    line.setAttribute('x2', String(nb.x * 100));
+    line.setAttribute('y2', String(nb.y * 100));
+    if (have.has(a) && have.has(b)) line.setAttribute('class', 'on');
+    svg.append(line);
+  }
+  const sel = nodes.find((n) => n.id === treeSel) ?? null;
+  const act = (fn: () => boolean) => () => { if (fn()) app.save(); app.refresh(); };
+  return h('section',
+    h('h2', 'Matriarch tree'),
+    h('p.muted.small', 'Matriarchs don\'t fight; they lead. Each level above 1 gives a point to spend on a node next to one you have. Keystones are strong but cost you something. Points can be moved any time between runs.'),
+    h('div.mt-points', h('b', `${pointsLeft(id, o)}`), ` of ${treePoints(o)} points free`),
+    h('div.mtree', svg, ...nodes.map((n) => {
+      const cls = ['mt-node', n.size, have.has(n.id) ? 'on' : canAllocate(id, o, n.id) ? 'open' : '', treeSel === n.id ? 'sel' : ''].filter(Boolean).join('.');
+      return h(`button.${cls}`, {
+        style: `left:${6 + n.x * 88}%;top:${6 + n.y * 88}%`,
+        title: n.name,
+        onclick: () => { treeSel = n.id; app.refresh(); },
+      }, n.size === 'root' ? '♛' : n.size === 'keystone' ? '◆' : n.size === 'notable' ? '★' : '');
+    })),
+    sel ? h('div.mt-detail',
+      h('b', sel.name), h('div.small', sel.desc),
+      sel.id === 'root' ? null
+        : have.has(sel.id)
+          ? h('button', { disabled: !canRefund(id, o, sel.id), onclick: act(() => refund(id, o, sel.id)) }, canRefund(id, o, sel.id) ? 'Refund point' : 'Refund the nodes beyond it first')
+          : h('button.primary', { disabled: !canAllocate(id, o, sel.id), onclick: act(() => allocate(id, o, sel.id)) },
+            canAllocate(id, o, sel.id) ? 'Allocate' : pointsLeft(id, o) <= 0 ? 'No points free (level her up)' : 'Not connected yet'),
+    ) : h('p.small.muted', 'Tap a node to see what it does.'),
+    (o.tree?.length ?? 0) ? h('button.ghost.small', { onclick: () => { o.tree = []; treeSel = null; app.save(); app.refresh(); } }, 'Reset tree') : null,
+  );
+}
 
 // ---------------- Summon ----------------
 
@@ -456,12 +500,12 @@ function nodeCard(node: SagaNode, stars: number) {
       h('span.tag', `${biome?.icon} ${biome?.name}`),
       ...node.modifiers.map((id) => h('span.tag', `${MODIFIER_BY_ID[id]?.icon} ${MODIFIER_BY_ID[id]?.name}`)),
       node.restrict ? h('span.tag', { style: `border-color:${CLANS[node.restrict].color};color:${CLANS[node.restrict].color}` }, `${CLANS[node.restrict].name}s only`) : '',
-      node.objective === 'nursery' ? h('span.tag', '🍼 Protect the nursery') : '',
+      node.objective ? h('span.tag', `${OBJECTIVES[node.objective].icon} ${OBJECTIVES[node.objective].name}`) : '',
       h('span.tag', `Boss: ${boss.icon} ${boss.name}`),
       node.difficulty > 1 ? h('span.tag', `Enemies +${Math.round((node.difficulty - 1) * 100)}%`) : '',
     ),
     h('div.small', '★ Clear the boss', ...node.goals.map((g) => h('div', `★ ${GOALS[g].name}: ${GOALS[g].desc}`))),
-    node.objective === 'nursery' ? h('div.small.muted', 'Nursery: a roost with pups sits mid-field in each regular battle. If it\'s wrecked, the level is lost.') : '',
+    node.objective ? h('div.small.muted', `${OBJECTIVES[node.objective].name}: ${OBJECTIVES[node.objective].desc}`) : '',
   );
 }
 
@@ -480,7 +524,7 @@ registerScreen('saga', (app) => {
       }, h('span.sn-n', n), h('span.sn-stars', open ? starsText(stars) : '🔒')),
       h('div.saga-label', h('b', node.name), h('div.small.muted', [
         node.restrict ? `${CLANS[node.restrict].name}s only` : '',
-        node.objective === 'nursery' ? '🍼 nursery' : '',
+        node.objective ? `${OBJECTIVES[node.objective].icon} ${OBJECTIVES[node.objective].name.toLowerCase()}` : '',
         ...node.modifiers.map((id) => MODIFIER_BY_ID[id]?.icon ?? ''),
         BOSS_RULE_BY_ID[node.bossRule].icon,
       ].filter(Boolean).join(' · '))),
@@ -490,7 +534,7 @@ registerScreen('saga', (app) => {
   setTimeout(() => list.querySelector('.current')?.scrollIntoView({ block: 'center' }), 30);
   return h('div.screen',
     header('Saga', () => app.go({ name: 'home' }), h('span.tag', `★ ${totalStars(p.saga.stars)}`)),
-    h('p.muted.small.center', 'Each node is a short run: a few levels and a boss. Your bats, levels and skills carry over; each run\'s deck, charms and relics start fresh. The path never ends.'),
+    h('p.muted.small.center', 'Each node is a short run: a few levels and a boss. Your bats, levels and skills carry over; each run\'s deck, charms and star charts start fresh. The path never ends.'),
     list,
   );
 });

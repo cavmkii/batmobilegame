@@ -4,7 +4,7 @@ import { BAT_BY_ID } from '../src/data/bats';
 import { ENCOUNTERS } from '../src/data/enemies';
 import { SPELL_BY_ID } from '../src/data/spells';
 import type { Card } from '../src/data/types';
-import { Defense, type DefenseConfig } from '../src/game/defense';
+import { Defense, armorMult, type DefenseConfig } from '../src/game/defense';
 import { buildStartingDeck, newCard } from '../src/game/deck';
 import { blueprint, newOwnedBat, type OwnedBat } from '../src/game/progression';
 
@@ -18,7 +18,6 @@ function cfg(over: Partial<DefenseConfig> = {}): DefenseConfig {
     deck: buildStartingDeck(['little_brown', 'common_vampire']),
     matriarchId: 'ghost_bat',
     roster: roster(['ghost_bat', 'little_brown', 'common_vampire', 'fledgling']),
-    relics: [],
     caveHp: 1000,
     caveMax: 1000,
     seed: 3,
@@ -52,7 +51,6 @@ export function botDay(d: Defense) {
     for (let i = 0; i < d.pool.length; i++) {
       const c = d.pool[i];
       if (!c) continue;
-      if (c.kind === 'spell') { d.takeSpell(i); continue; }
       const stack = d.slots.find((s) => d.canStackOn(s, c.id));
       const target = stack ? stack.idx : bestEmpty(c.id);
       if (target >= 0) d.place(i, target);
@@ -138,10 +136,11 @@ describe('pool and guano', () => {
     expect(d.pool.some((c) => c?.id === first)).toBe(true);
   });
 
-  it('takes spells into a hand and casts them as instants at night', () => {
-    const d = new Defense(cfg({ deck: deckOf('guano_bomb', 'ripe_harvest') }));
-    const bomb = d.pool.findIndex((c) => c?.id === 'guano_bomb');
-    expect(d.takeSpell(bomb)).toBe(true);
+  it('keeps spells out of the pool, in their own hand, cast as instants at night', () => {
+    const d = new Defense(cfg({ deck: deckOf('guano_bomb', 'screech', 'night_fog', 'little_brown', 'fledgling') }));
+    expect(d.pool.every((c) => !c || c.kind === 'bat')).toBe(true);
+    expect(d.spells.length).toBe(BALANCE.spells.startHand);
+    expect(d.spellsLeft).toBe(1);
     expect(d.canCast(0)).toBe(false); // nothing to hit by day
     d.endDay();
     for (let i = 0; i < 60 * 4; i++) d.step(1 / 60);
@@ -339,16 +338,23 @@ describe('matriarchs', () => {
     expect(plain.canMerge(10, 5)).toBe(false);
   });
 
-  it('Long Range shows three cards and Feeding Roost pays more for kills', () => {
+  it('Long Range shows three cards; Feeding Roost levels the best hunters at dawn', () => {
     const n = new Defense(cfg({ matriarchId: 'greater_noctule', roster: roster(['greater_noctule', 'little_brown']), deck: two('little_brown') }));
     expect(n.pool.length).toBe(BALANCE.economy.poolSize + 1);
     const g = new Defense(cfg());
-    expect(g.rule.killsPerGuano).toBe(2);
+    expect(g.rule.feedingRoost).toBe(true);
+    put(g, at(0, 0), 'little_brown');
+    put(g, at(4, 0), 'little_brown');
+    g.cave.hp = g.cave.max = 1e9;
+    g.endDay();
+    for (let k = 0; k < 60 * 120 && g.phase === 'night'; k++) g.step(1 / 60);
+    expect(g.slots[at(0, 0)].roost!.level + g.slots[at(4, 0)].roost!.level).toBe(3);
   });
 
-  it('a levelled matriarch adds starting guano', () => {
+  it('a matriarch\'s tree adds starting guano once allocated', () => {
     const lv1 = new Defense(cfg()).guano;
-    const lv7 = new Defense(cfg({ roster: { ...roster(['little_brown', 'common_vampire', 'fledgling']), ghost_bat: { ...newOwnedBat(), level: 7 } } })).guano;
+    const tree = { ...newOwnedBat(), level: 7, tree: ['h1'] };
+    const lv7 = new Defense(cfg({ roster: { ...roster(['little_brown', 'common_vampire', 'fledgling']), ghost_bat: tree } })).guano;
     expect(lv7).toBe(lv1 + 2);
   });
 });
@@ -511,7 +517,7 @@ describe('charms, enhancements, boss rules, interest', () => {
 
 /** Balance report. Run: npx vitest run tests/defense.test.ts -t balance --reporter=verbose */
 describe('balance smoke', () => {
-  const drafted = () => [newCard('bat', 'egyptian_fruit'), newCard('bat', 'egyptian_fruit', true), newCard('bat', 'straw_fruit'),
+  const drafted = () => [newCard('bat', 'egyptian_fruit'), newCard('bat', 'egyptian_fruit', 'sharp'), newCard('bat', 'straw_fruit'),
     newCard('bat', 'pallas_tongue'), newCard('spell', 'ripe_harvest'), newCard('spell', 'screech')];
   const decks: Record<string, { mat: string; flock: string[]; extra: Card[]; level: number }> = {
     'ghost starter L1': { mat: 'ghost_bat', flock: ['little_brown', 'common_vampire', 'egyptian_fruit'], extra: [], level: 1 },
@@ -531,7 +537,7 @@ describe('balance smoke', () => {
         let lost = 0;
         const N = 8;
         for (let s = 0; s < N; s++) {
-          const deck = [...buildStartingDeck(d.flock), ...d.extra.map((c) => newCard(c.kind, c.id, c.upgraded))];
+          const deck = [...buildStartingDeck(d.flock), ...d.extra.map((c) => newCard(c.kind, c.id, c.mod))];
           const def = new Defense(cfg({
             encounterId: enc.id, row, deck, matriarchId: d.mat, seed: s * 7 + 1,
             roster: roster([d.mat, 'fledgling', ...d.flock, ...d.extra.filter((c) => c.kind === 'bat').map((c) => c.id)], d.level),
@@ -602,5 +608,57 @@ describe('night pacing and economy', () => {
     d.endDay();
     expect(hpAt(12)).toBeGreaterThan(hpAt(10));
     expect(d.units[d.units.length - 1].armored).toBe(true);
+  });
+});
+
+describe('trim-and-fix round', () => {
+  it('Echo puts a plain copy of the card in the discard', () => {
+    const echo = { ...newCard('bat', 'little_brown'), mod: 'echo' as const };
+    const d = new Defense(cfg({ deck: [echo, newCard('bat', 'fledgling')], caveHp: 1e9, caveMax: 1e9 }));
+    d.guano = 99;
+    d.place(d.pool.findIndex((c) => c?.uid === echo.uid), at(0, 0));
+    expect(d.discard.filter((c) => c.id === 'little_brown').length).toBe(2);
+    expect(d.discard.find((c) => c.uid !== echo.uid && c.id === 'little_brown')!.mod).toBeUndefined();
+  });
+
+  it('armour reduces damage by K / (K + armour), for bats and enemies', () => {
+    const d = big();
+    put(d, at(0, 0), 'little_brown', BALANCE.roostLevel.armorLevel);
+    d.endDay();
+    for (let k = 0; k < 60 * 4; k++) d.step(1 / 60);
+    const bat = d.units.find((u) => u.side === 'bat' && u.home === at(0, 0))!;
+    expect(bat.armored).toBe(true);
+    const hp = bat.hp;
+    (d as unknown as { damage(t: unknown, n: number): number }).damage(bat, 10);
+    const A = BALANCE.armor.perRoostLevel * (BALANCE.roostLevel.armorLevel - 1);
+    expect(bat.armor).toBe(A);
+    expect(hp - bat.hp).toBeCloseTo(10 * BALANCE.armor.K / (BALANCE.armor.K + A));
+    expect(armorMult(100)).toBeCloseTo(0.5);
+    (d as unknown as { spawnEnemy(id: string, x: number): void }).spawnEnemy('beetle', 1);
+    expect(d.units[d.units.length - 1].armor).toBe(25);
+  });
+
+  it('Hunt loses a level where too many enemies got away; Fragile blocks cave healing', () => {
+    const d = new Defense(cfg({ objective: 'hunt', caveHp: 1e9, caveMax: 1e9 }));
+    while (d.phase === 'day') {
+      d.endDay();
+      for (const u of d.units) u.dead = true;
+      for (let k = 0; k < 60 * 120 && (d.phase as string) === 'night'; k++) {
+        for (const u of d.units) if (u.side === 'bat') u.dead = true; // nobody fights back
+        d.step(1 / 60);
+      }
+    }
+    expect(d.phase).toBe('lost');
+    expect(d.lostReason).toBe('hunt');
+    const f = new Defense(cfg({ objective: 'fragile', deck: deckOf('ripe_harvest', 'fledgling'), caveHp: 500, caveMax: 1000 }));
+    f.guano = 9;
+    expect(f.cast(0)).toBe(true);
+    expect(f.cave.hp).toBe(500);
+  });
+
+  it('every boss encounter is a boss with a finale', () => {
+    const bosses = ENCOUNTERS.filter((e) => e.tier === 'boss');
+    expect(bosses.length).toBeGreaterThanOrEqual(4);
+    for (const b of bosses) expect(b.finale?.length, b.id).toBeGreaterThan(0);
   });
 });

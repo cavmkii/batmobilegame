@@ -1,14 +1,14 @@
 import { BALANCE } from '../data/balance';
 import { BIOMES, BIOME_BY_ID, MODIFIER_BY_ID, rewardBonusPct } from '../data/setup';
 import { BAT_BY_ID } from '../data/bats';
-import { RELICS } from '../data/relics';
 import { SPELL_BY_ID } from '../data/spells';
 import type { Card, CardMod, ClanId, Rarity } from '../data/types';
 import { CHARMS, CHARM_BY_ID, CHARM_PRICE, CHARM_SLOTS, charmSellValue } from '../data/charms';
-import { ENHANCEMENTS, ENHANCE_BY_ID } from '../data/enhance';
+import { ENHANCEMENTS, ENHANCE_BY_ID, isSharp } from '../data/enhance';
 import { FORMATIONS, type FormationId } from '../data/formations';
-import { GOALS, SAGA_ROWS, sagaMaxDepth, sagaNode, type GoalId } from '../data/saga';
+import { GOALS, SAGA_ROWS, sagaMaxDepth, sagaNode, type GoalId, type ObjectiveId } from '../data/saga';
 import { buildStartingDeck, draftPool, newCard, validateSetup } from './deck';
+import { treeEffects, treeSum } from './matriarchTree';
 import { generateMap, type MapNode, type RunMap } from './map';
 import type { Profile } from './profile';
 import { Rng } from './rng';
@@ -21,7 +21,6 @@ export interface Offer {
 
 export interface ShopState {
   cards: Offer[];
-  relic: string | null;
   charms: string[];
   enhance: CardMod[];
   chart: FormationId | null;
@@ -38,7 +37,6 @@ export interface RunState {
   /** Modifier ids chosen on the Play screen. */
   modifiers?: string[];
   deck: Card[];
-  relics: string[];
   caveHp: number;
   caveMax: number;
   figs: number;
@@ -52,13 +50,13 @@ export interface RunState {
   glowEarned: number;
   /** Card choices waiting after a battle. */
   draft: Offer[] | null;
-  /** Relic granted after an elite, shown on the reward screen. */
-  rewardRelic: string | null;
   shop: ShopState | null;
   event: string | null;
   status: 'active' | 'won' | 'lost';
-  /** Charm ids (up to CHARM_SLOTS). */
+  /** Charm ids (up to charmSlots). */
   charms: string[];
+  /** CHARM_SLOTS plus the matriarch tree's Trinket Pouch. */
+  charmSlots?: number;
   /** Formation levels from star charts. */
   formations: Partial<Record<FormationId, number>>;
   /** Charm choice waiting after an elite. */
@@ -68,10 +66,10 @@ export interface RunState {
   /** Saga node number, if this run is a saga node. */
   saga?: number;
   restrict?: ClanId;
-  objective?: 'nursery';
+  objective?: ObjectiveId;
   difficulty?: number;
   /** Star-goal bookkeeping across the run. */
-  tally: { leaks: number; rerolls: number; maxRoosts: number; maxLevel: number };
+  tally: { leaks: number; rerolls: number; maxRoosts: number; maxLevel: number; wrecks: number };
 }
 
 export const runRng = (run: RunState) => new Rng(run.rngState);
@@ -103,7 +101,6 @@ export function startRun(p: Profile, matriarchId: string, flock: string[], seed:
     biome: BIOME_BY_ID[setup.biome ?? ''] ? setup.biome! : BIOMES[0].id,
     modifiers,
     deck: buildStartingDeck(flock),
-    relics: [],
     caveHp: cave,
     caveMax: cave,
     figs: 0,
@@ -114,11 +111,11 @@ export function startRun(p: Profile, matriarchId: string, flock: string[], seed:
     xpEarned: 0,
     glowEarned: 0,
     draft: null,
-    rewardRelic: null,
     shop: null,
     event: null,
     status: 'active',
     charms: [],
+    charmSlots: CHARM_SLOTS + treeSum(treeEffects(matriarchId, p.roster[matriarchId]), 'charmSlot'),
     formations: {},
     charmOffer: null,
     chartOffer: null,
@@ -126,7 +123,7 @@ export function startRun(p: Profile, matriarchId: string, flock: string[], seed:
     restrict: node?.restrict,
     objective: node?.objective,
     difficulty: node?.difficulty,
-    tally: { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0 },
+    tally: { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0, wrecks: 0 },
   };
   p.flock = [...flock];
   p.lastMatriarch = matriarchId;
@@ -148,7 +145,7 @@ export function enterNode(run: RunState, nodeId: string): MapNode {
   const rng = runRng(run);
   if (node.type === 'shop') run.shop = makeShop(run, rng);
   if (node.type === 'event') run.event = rng.pick(EVENTS).id;
-  if (node.type === 'treasure') run.rewardRelic = randomRelic(run, rng);
+  if (node.type === 'treasure') run.charmOffer = charmOffers(run, rng, 2);
   saveRng(run, rng);
   return node;
 }
@@ -162,7 +159,6 @@ export function leaveNode(run: RunState) {
   run.shop = null;
   run.event = null;
   run.draft = null;
-  run.rewardRelic = null;
   run.charmOffer = null;
   run.chartOffer = null;
 }
@@ -189,9 +185,9 @@ export function resolveBattle(run: RunState, won: boolean, caveHpLeft: number) {
   run.xpEarned += rw.xp;
   run.glowEarned += rw.glow;
   run.figs += rw.figs;
-  for (const id of run.relics) {
-    const e = RELICS.find((r) => r.id === id)!.effect;
-    if (e.kind === 'healAfterBattle') run.caveHp = Math.min(run.caveMax, run.caveHp + e.amount);
+  for (const id of run.charms) {
+    const e = CHARM_BY_ID[id]?.effect;
+    if (e?.kind === 'healAfterBattle') heal(run, e.amount);
   }
   if (node.type === 'boss') {
     run.status = 'won';
@@ -214,6 +210,7 @@ export function applyLevelResult(run: RunState, res: { shattered: string[]; brok
   run.tally.rerolls += res.tally.rerolls;
   run.tally.maxRoosts = Math.max(run.tally.maxRoosts, res.tally.maxRoosts);
   run.tally.maxLevel = Math.max(run.tally.maxLevel, res.tally.maxLevel);
+  run.tally.wrecks += res.tally.wrecks ?? 0;
 }
 
 // ---------------- Charms, star charts, enhancements ----------------
@@ -230,7 +227,8 @@ export function charmOffers(run: RunState, rng: Rng, n: number): string[] {
   return out;
 }
 
-export const charmsFull = (run: RunState) => run.charms.length >= CHARM_SLOTS;
+export const charmSlots = (run: RunState) => run.charmSlots ?? CHARM_SLOTS;
+export const charmsFull = (run: RunState) => run.charms.length >= charmSlots(run);
 
 export function takeCharm(run: RunState, id: string): boolean {
   if (!CHARM_BY_ID[id] || run.charms.includes(id) || charmsFull(run)) return false;
@@ -252,7 +250,7 @@ export function studyChart(run: RunState, id: FormationId) {
 /** Enhance a bat card. Replaces any previous enhancement. */
 export function enhanceCard(run: RunState, uid: string, mod: CardMod): boolean {
   const c = run.deck.find((x) => x.uid === uid);
-  if (!c || c.kind !== 'bat' || !ENHANCE_BY_ID[mod]) return false;
+  if (!c || !ENHANCE_BY_ID[mod] || (c.kind === 'spell' && mod !== 'sharp')) return false;
   c.mod = mod;
   return true;
 }
@@ -264,7 +262,7 @@ export function goalMet(run: RunState, g: GoalId): boolean {
   switch (g) {
     case 'noLeak': return t.leaks === 0;
     case 'healthy': return run.caveHp >= run.caveMax * 0.75;
-    case 'frugal': return t.rerolls === 0;
+    case 'unbroken': return (t.wrecks ?? 0) === 0;
     case 'small': return t.maxRoosts <= 7;
     case 'tall': return t.maxLevel >= 6;
   }
@@ -325,31 +323,24 @@ export function removeCard(run: RunState, uid: string): boolean {
   return true;
 }
 
+/** Rest site / events: make a card Sharp (replaces any other enhancement). */
 export function upgradeCard(run: RunState, uid: string): boolean {
   const c = run.deck.find((x) => x.uid === uid);
-  if (!c || c.upgraded) return false;
-  c.upgraded = true;
+  if (!c || c.mod === 'sharp') return false;
+  c.mod = 'sharp';
   return true;
 }
 
+/** Heal the cave (no-op on a Fragile-cave saga node; damage still applies). */
 export function heal(run: RunState, amount: number) {
+  if (amount > 0 && run.objective === 'fragile') return;
   run.caveHp = Math.min(run.caveMax, Math.round(run.caveHp + amount));
-}
-
-export function randomRelic(run: RunState, rng: Rng): string | null {
-  const left = RELICS.filter((r) => !run.relics.includes(r.id));
-  return left.length ? rng.pick(left).id : null;
-}
-
-export function takeRelic(run: RunState, id: string | null) {
-  if (id && !run.relics.includes(id)) run.relics.push(id);
 }
 
 function makeShop(run: RunState, rng: Rng): ShopState {
   const cards = draftOffers(run, rng, 3).map((o) => ({ ...o, price: BALANCE.shop.cardPrice[offerRarity(o)] }));
   return {
     cards,
-    relic: rng.next() < 0.5 ? randomRelic(run, rng) : null,
     charms: charmOffers(run, rng, 2),
     enhance: rng.shuffle(ENHANCEMENTS.map((e) => e.id)).slice(0, 2),
     chart: rng.pick(FORMATIONS).id,
@@ -392,13 +383,14 @@ export const EVENTS: RunEvent[] = [
     options: [
       {
         label: 'Accept',
-        detail: 'Lose 15% max cave HP, gain a relic',
+        detail: 'Lose 15% max cave HP, gain a random charm',
         apply: (r, rng) => {
-          const id = randomRelic(r, rng);
+          const [id] = charmOffers(r, rng, 1);
           r.caveMax = Math.round(r.caveMax * 0.85);
           r.caveHp = Math.min(r.caveHp, r.caveMax);
-          takeRelic(r, id);
-          return id ? 'The owl keeps its word.' : 'The owl has nothing left to give. It keeps its taste anyway.';
+          if (!id) return 'The owl has nothing left to give. It keeps its taste anyway.';
+          if (!takeCharm(r, id)) return 'Your charm slots are full; the owl keeps its trinket, and its taste.';
+          return `The owl keeps its word: ${CHARM_BY_ID[id].name}.`;
         },
       },
       { label: 'Refuse', detail: 'Nothing happens', apply: () => 'You fly on.' },
@@ -413,10 +405,10 @@ export const EVENTS: RunEvent[] = [
         label: 'Practise',
         detail: 'Upgrade a random card',
         apply: (r, rng) => {
-          const c = r.deck.filter((x) => !x.upgraded);
+          const c = r.deck.filter((x) => !x.mod);
           if (!c.length) return 'Everyone is already sharp.';
           const pick = rng.pick(c);
-          pick.upgraded = true;
+          pick.mod = 'sharp';
           return `${cardName(pick)} improved.`;
         },
       },
@@ -424,8 +416,8 @@ export const EVENTS: RunEvent[] = [
         label: 'Practise all night',
         detail: 'Upgrade 2 random cards, lose 10% cave HP',
         apply: (r, rng) => {
-          const c = rng.shuffle(r.deck.filter((x) => !x.upgraded)).slice(0, 2);
-          c.forEach((x) => (x.upgraded = true));
+          const c = rng.shuffle(r.deck.filter((x) => !x.mod)).slice(0, 2);
+          c.forEach((x) => (x.mod = 'sharp'));
           heal(r, -r.caveMax * 0.1);
           r.caveHp = Math.max(1, r.caveHp);
           return c.length ? `${c.map(cardName).join(' and ')} improved.` : 'Nothing left to learn.';
@@ -452,6 +444,115 @@ export const EVENTS: RunEvent[] = [
       { label: 'Guide it home', detail: '+30 Figs', apply: (r) => ((r.figs += 30), 'Its colony leaves you a gift.') },
     ],
   },
+  {
+    id: 'guano_miners',
+    title: 'Guano Miners',
+    text: 'Miners with sacks and lanterns. For centuries bat guano was dug out of caves for fertiliser and for the saltpetre in gunpowder.',
+    options: [
+      {
+        label: 'Trade with them', detail: '+45 Figs, lose 10% cave HP',
+        apply: (r) => { r.figs += 45; r.caveHp = Math.max(1, Math.round(r.caveHp - r.caveMax * 0.1)); return 'They pay well, and dig too deep.'; },
+      },
+      { label: 'Drive them off', detail: 'Nothing happens', apply: () => 'The cave goes quiet again.' },
+    ],
+  },
+  {
+    id: 'white_nose',
+    title: 'Sick Colony',
+    text: 'A neighbouring colony wakes too often in winter, muzzles dusted white. White-nose syndrome, a fungal disease, has killed millions of hibernating bats in North America.',
+    options: [
+      {
+        label: 'Keep apart', detail: 'Remove a random Fledgling from your deck',
+        apply: (r, rng) => {
+          const f = r.deck.filter((c) => c.id === 'fledgling');
+          if (!f.length || r.deck.length <= 4) return 'You keep your distance; nothing changes.';
+          removeCard(r, rng.pick(f).uid);
+          return 'One young bat stays behind. The rest stay healthy.';
+        },
+      },
+      {
+        label: 'Take in the healthy ones', detail: 'Add 2 Fledglings, heal 10%',
+        apply: (r) => {
+          let n = 0;
+          for (let k = 0; k < 2 && !deckFull(r); k++) n += addCard(r, { kind: 'bat', id: 'fledgling' }) ? 1 : 0;
+          heal(r, r.caveMax * 0.1);
+          return n ? `${n} Fledgling${n > 1 ? 's' : ''} join the colony.` : 'No room; you share what food you can.';
+        },
+      },
+    ],
+  },
+  {
+    id: 'moth_bloom',
+    title: 'Moth Bloom',
+    text: 'A warm wet night and the air is thick with moths. A single little brown bat can catch hundreds of insects in a night.',
+    options: [
+      {
+        label: 'Feast', detail: 'Copy a random bat card in your deck',
+        apply: (r, rng) => {
+          const bats = r.deck.filter((c) => c.kind === 'bat');
+          if (!bats.length || deckFull(r)) return 'Everyone eats well, but there is no room for more.';
+          const c = rng.pick(bats);
+          addCard(r, { kind: 'bat', id: c.id });
+          return `Well fed, another ${BAT_BY_ID[c.id].name} joins.`;
+        },
+      },
+      { label: 'Stockpile', detail: '+30 Figs', apply: (r) => ((r.figs += 30), 'You trade the surplus for figs.') },
+    ],
+  },
+  {
+    id: 'thunderstorm',
+    title: 'Thunderstorm',
+    text: 'Rain hammers the hillside. Bats mostly stay in on stormy nights: wet wings cost a lot of energy to fly.',
+    options: [
+      { label: 'Shelter', detail: 'Heal 15%', apply: (r) => (heal(r, r.caveMax * 0.15), 'The colony waits it out.') },
+      {
+        label: 'Fly through it', detail: 'A random card becomes Sharp, lose 10% cave HP',
+        apply: (r, rng) => {
+          const c = r.deck.filter((x) => !x.mod);
+          r.caveHp = Math.max(1, Math.round(r.caveHp - r.caveMax * 0.1));
+          if (!c.length) return 'Soaked, and nothing learned.';
+          const pick = rng.pick(c);
+          pick.mod = 'sharp';
+          return `${cardName(pick)} comes back hardened.`;
+        },
+      },
+    ],
+  },
+  {
+    id: 'mist_nets',
+    title: 'Mist Nets',
+    text: 'Researchers string fine nets across a flyway, then measure, band and release every bat they catch. Long-term banding is how we know some small bats live over 30 years.',
+    options: [
+      {
+        label: 'Get banded', detail: 'Study a random star chart',
+        apply: (r, rng) => {
+          const f = rng.pick(FORMATIONS);
+          studyChart(r, f.id);
+          return `The researchers' notes give you an idea: ${f.name} is now level ${r.formations[f.id]}.`;
+        },
+      },
+      { label: 'Slip past', detail: '+20 Figs', apply: (r) => ((r.figs += 20), 'You find a dropped snack bag.') },
+    ],
+  },
+  {
+    id: 'old_roost',
+    title: 'Abandoned Roost',
+    text: 'An old roost, empty for years. The ceiling is stained dark where thousands of bats once hung.',
+    options: [
+      {
+        label: 'Search it', detail: 'A random enhancement on a random bat card',
+        apply: (r, rng) => {
+          const bats = r.deck.filter((c) => c.kind === 'bat' && !c.mod);
+          if (!bats.length) return 'Nothing here your colony can use.';
+          const c = rng.pick(bats);
+          const e = rng.pick(ENHANCEMENTS);
+          c.mod = e.id;
+          return `${BAT_BY_ID[c.id].name} becomes ${e.name}: ${e.desc}`;
+        },
+      },
+      { label: 'Rest here', detail: 'Heal 20%', apply: (r) => (heal(r, r.caveMax * 0.2), 'A quiet day in an old home.') },
+    ],
+  },
 ];
 
 export const EVENT_BY_ID: Record<string, RunEvent> = Object.fromEntries(EVENTS.map((e) => [e.id, e]));
@@ -464,9 +565,9 @@ export function chooseEventOption(run: RunState, index: number): string {
   return msg;
 }
 
-export function cardName(c: Pick<Card, 'kind' | 'id' | 'upgraded'>): string {
+export function cardName(c: Pick<Card, 'kind' | 'id' | 'upgraded' | 'mod'>): string {
   const base = c.kind === 'bat' ? BAT_BY_ID[c.id].name : SPELL_BY_ID[c.id].name;
-  return c.upgraded ? `${base}+` : base;
+  return isSharp(c) ? `${base}+` : base;
 }
 
 /** Bank the run's rewards into the profile and close the run. */

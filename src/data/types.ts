@@ -88,6 +88,8 @@ export interface BatDef {
    */
   pattern: [number, number][];
   traits: Trait[];
+  /** Base armour (see BALANCE.armor); roost levels add more. */
+  armor?: number;
   evolved: { name: string; trait?: Trait };
   talents: [Talent, Talent];
   sprite: SpriteSpec;
@@ -127,37 +129,34 @@ export interface EnemyDef {
   threat: number;
   /** Field-guide entry. */
   fact: string;
+  /** Armour (see BALANCE.armor). */
+  armor?: number;
+  /** Palette overrides on the shared sprite (bosses reuse a smaller enemy's art). */
+  tint?: Record<string, string>;
 }
 
-export interface RelicDef {
-  id: string;
-  name: string;
-  desc: string;
-  icon: string;
-  effect: RelicEffect;
-}
-
-export type RelicEffect =
+/** Flat passive effects some charms carry (they used to be relics). */
+export type PassiveEffect =
   | { kind: 'guanoPerDawn'; amount: number }
   | { kind: 'refreshDiscount'; amount: number }
   | { kind: 'startGuano'; amount: number }
   | { kind: 'speedPct'; pct: number }
   | { kind: 'hpPct'; pct: number }
   | { kind: 'atkPct'; pct: number }
-  | { kind: 'formationBonus'; amount: number }
   | { kind: 'healAfterBattle'; amount: number }
   | { kind: 'startLevel'; amount: number };
 
 export type TerrainId = 'pond' | 'fig' | 'cactus' | 'lamp' | 'pen';
 
-export type CardMod = 'foil' | 'wild' | 'echo' | 'glass';
+export type CardMod = 'sharp' | 'foil' | 'wild' | 'echo' | 'glass';
 
 /** A card in a run deck. */
 export interface Card {
   uid: string;
   kind: 'bat' | 'spell';
   id: string;
-  upgraded: boolean;
-  /** Enhancement (bat cards only). */
+  /** Legacy: card upgrades became the Sharp enhancement (migrated on load). */
+  upgraded?: boolean;
+  /** Enhancement. Spells can only be Sharp. */
   mod?: CardMod;
 }

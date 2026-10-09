@@ -1,7 +1,7 @@
+import { BALANCE } from '../data/balance';
 import { BAT_BY_ID } from '../data/bats';
 import { CLANS, RARITY_COLOR } from '../data/clans';
-import { RELIC_BY_ID } from '../data/relics';
-import { ENHANCE_BY_ID } from '../data/enhance';
+import { ENHANCE_BY_ID, isSharp } from '../data/enhance';
 import { SPELL_BY_ID } from '../data/spells';
 import type { Card, ClanId, Rarity } from '../data/types';
 import { attackLabel, blueprint, describeTrait, displayName, type OwnedBat } from '../game/progression';
@@ -27,13 +27,13 @@ export function rarityOf(card: Pick<Card, 'kind' | 'id'>): Rarity {
  * A full card face for deck lists, drafts and the shop.
  * `owned` is the roster entry used for stats (undefined = unowned → level 1).
  */
-export function cardFace(card: Pick<Card, 'kind' | 'id' | 'upgraded' | 'mod'>, owned?: OwnedBat, opts: { onclick?: () => void; footer?: Node | string; selected?: boolean; compact?: boolean } = {}) {
+export function cardFace(card: Pick<Card, 'kind' | 'id' | 'mod'> & { upgraded?: boolean }, owned?: OwnedBat, opts: { onclick?: () => void; footer?: Node | string; selected?: boolean; compact?: boolean } = {}) {
   const rarity = rarityOf(card);
-  const cls = `card-face r-${rarity}${opts.selected ? ' selected' : ''}${opts.compact ? ' compact' : ''}${card.upgraded ? ' upgraded' : ''}`;
+  const cls = `card-face r-${rarity}${opts.selected ? ' selected' : ''}${opts.compact ? ' compact' : ''}${isSharp(card) ? ' upgraded' : ''}`;
   let art: Node, name: string, cost: number, clans: ClanId[], lines: string[], sub: string;
   if (card.kind === 'bat') {
     const def = BAT_BY_ID[card.id];
-    const bp = blueprint(card.id, owned, card.upgraded);
+    const bp = blueprint(card.id, owned, isSharp(card));
     art = batImg(card.id, 2);
     name = displayName(def, owned);
     cost = bp.cost;
@@ -45,6 +45,7 @@ export function cardFace(card: Pick<Card, 'kind' | 'id' | 'upgraded' | 'mod'>, o
       attackLabel(bp.traits, bp.stats.range),
       `Each bat ❤${fmt(bp.stats.hp)} ⚔${fmt(bp.stats.atk)} every ${bp.stats.rate}s`,
       ...bp.traits.map(describeTrait),
+      ...(def.clans.includes('SAN') ? [`Dawn: heals neighbouring roosts ${BALANCE.adjacency.vampireDawnHealPct}%`] : []),
     ];
   } else {
     const s = SPELL_BY_ID[card.id];
@@ -53,12 +54,12 @@ export function cardFace(card: Pick<Card, 'kind' | 'id' | 'upgraded' | 'mod'>, o
     cost = s.cost;
     clans = s.clans;
     sub = 'Spell';
-    lines = [s.desc + (card.upgraded ? ' (Upgraded: +40% power)' : '')];
+    lines = [s.desc + (isSharp(card) ? ' (Sharp: +40% power)' : '')];
   }
   return h(`div.${cls.split(' ').join('.')}`, { onclick: opts.onclick, style: `--rarity:${RARITY_COLOR[rarity]}` },
     h('div.cf-top', h('span.cost', cost), clanPips(clans)),
     h('div.cf-art', art),
-    h('div.cf-name', name + (card.upgraded ? '+' : '')),
+    h('div.cf-name', name),
     card.mod ? h('div.cf-mod', `${ENHANCE_BY_ID[card.mod].icon} ${ENHANCE_BY_ID[card.mod].name}`) : null,
     h('div.cf-sub', sub),
     !opts.compact && h('div.cf-lines', ...lines.map((l) => h('div', l))),
@@ -85,15 +86,6 @@ export function patternGrid(batId: string, size: 'sm' | 'xs' = 'sm', pattern?: [
   return h(`div.pattern.${size}`, { style: `grid-template-columns: repeat(${reach * 2 + 1}, 1fr)`, title: 'Merging this roost also gives +1 to these tiles (hold a card to see them on the field)' }, ...cells);
 }
 
-export function relicChip(id: string) {
-  const r = RELIC_BY_ID[id];
-  return h('span.relic', { title: `${r.name}: ${r.desc}` }, r.icon);
-}
-
-export function relicCard(id: string, footer?: Node) {
-  const r = RELIC_BY_ID[id];
-  return h('div.relic-card', h('div.relic-icon', r.icon), h('div', h('b', r.name), h('div.muted', r.desc)), footer);
-}
 
 export function currencyBar(items: [string, string | number][]) {
   return h('div.currency', ...items.map(([icon, v]) => h('span', icon, ' ', typeof v === 'number' ? fmt(v) : v)));

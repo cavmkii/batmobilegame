@@ -22,7 +22,7 @@ export const SPELLS: SpellDef[] = [
     desc: 'Heal all bats and roosts 35%, and the cave 60. Day or night.',
   },
   {
-    id: 'swarm_call', name: 'Swarm Call', clans: ['INS'], rarity: 'rare', cost: 2, icon: '🦟',
+    id: 'swarm_call', name: 'Swarm Call', clans: ['INS'], rarity: 'rare', cost: 1, icon: '🦟',
     effect: { kind: 'summon', batId: 'little_brown', count: 4 },
     desc: 'Night: 4 Little Brown Bats fly out of the cave.',
   },

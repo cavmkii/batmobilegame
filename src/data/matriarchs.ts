@@ -5,8 +5,8 @@
 export type MatriarchEffect =
   /** Every merge (pool card onto a roost, or roost onto roost) pays this much guano back. */
   | { kind: 'mergeRefund'; guano: number }
-  /** Kills per point of dawn guano (default BALANCE.economy.killsPerGuano). */
-  | { kind: 'killGuano'; perKills: number }
+  /** At dawn, the roost whose bats killed the most tonight gains a level. */
+  | { kind: 'feedingRoost' }
   /** A roost can merge into a roost up to this many levels above it (normally 0: same level only). */
   | { kind: 'mergeReach'; levels: number }
   /** Extra cards shown in the pool. */
@@ -30,9 +30,9 @@ export const MATRIARCHS: MatriarchDef[] = [
   },
   {
     batId: 'ghost_bat', title: 'Feeding Roost',
-    rule: 'Kills pay double guano at dawn (1 per 2 kills).',
+    rule: 'At dawn, the roost whose bats made the most kills tonight gains +1 level.',
     why: 'Ghost bats carry prey back to a feeding roost, and the floor beneath piles up with remains.',
-    effect: { kind: 'killGuano', perKills: 2 },
+    effect: { kind: 'feedingRoost' },
   },
   {
     batId: 'spectral_bat', title: 'Pair Bond',
@@ -50,6 +50,3 @@ export const MATRIARCHS: MatriarchDef[] = [
 
 export const MATRIARCH_BY_ID: Record<string, MatriarchDef> = Object.fromEntries(MATRIARCHS.map((m) => [m.batId, m]));
 
-/** Levelling a matriarch: +1 starting guano each level for every this many levels (plus-levels count). */
-export const MATRIARCH_GUANO_EVERY = 3;
-export const matriarchGuano = (level: number, plus = 0): number => Math.floor((level + plus - 1) / MATRIARCH_GUANO_EVERY);

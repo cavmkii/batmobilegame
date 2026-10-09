@@ -6,18 +6,18 @@ import { ENCOUNTERS } from '../data/enemies';
 import type { Card } from '../data/types';
 import type { NodeType } from '../game/map';
 import { copiesIn } from '../game/deck';
-import { CHARM_BY_ID, CHARM_SLOTS, charmSellValue } from '../data/charms';
+import { CHARM_BY_ID, charmSellValue } from '../data/charms';
 import { ENHANCE_BY_ID } from '../data/enhance';
 import { FORMATION_BY_ID, STAR_CHART_PRICE, type FormationId } from '../data/formations';
 import { GOALS, sagaNode } from '../data/saga';
 import { BOSS_RULE_BY_ID } from '../data/bossRules';
 import {
-  charmPrice, charmsFull, enhanceCard, sellCharm, studyChart, takeCharm,
+  charmPrice, charmSlots, charmsFull, enhanceCard, sellCharm, studyChart, takeCharm,
   EVENT_BY_ID, addCard, availableNodes, cardName, chooseEventOption, combatRewards, deckFull, enterNode, finishRun, heal,
-  leaveNode, removeCard, takeRelic, upgradeCard, type Offer, type RunState,
+  leaveNode, removeCard, upgradeCard, type Offer, type RunState,
 } from '../game/run';
 import { registerScreen, type App } from './app';
-import { batImg, cardFace, currencyBar, fmt, header, relicCard, relicChip } from './components';
+import { batImg, cardFace, currencyBar, fmt, header } from './components';
 import { h, modal, toast } from './dom';
 
 export const NODE_ICON: Record<NodeType, string> = {
@@ -32,9 +32,8 @@ function runHud(app: App) {
   return h('div.run-hud',
     h('div.cave-hp', h('span', '🏔 Cave'), h('div.hpbar', h('div', { style: `width:${pct * 100}%` })), h('span.small', `${fmt(r.caveHp)}/${fmt(r.caveMax)}`)),
     currencyBar([['🫐', r.figs], ['✨', r.xpEarned], ['🪲', r.glowEarned]]),
-    h('div.relics', ...r.relics.map(relicChip)),
     h('div.charm-bar',
-      ...Array.from({ length: CHARM_SLOTS }, (_, i) => {
+      ...Array.from({ length: charmSlots(r) }, (_, i) => {
         const id = r.charms[i];
         return id
           ? h('button.charm-slot.full', { onclick: () => charmDialog(app, id) }, CHARM_BY_ID[id].icon)
@@ -205,17 +204,13 @@ registerScreen('reward', (app) => {
     app.save();
     app.go({ name: 'map' });
   };
-  const relicId = r.rewardRelic;
   return h('div.screen',
     header(node.type === 'treasure' ? 'Treasure' : 'Victory!'),
     runHud(app),
     rw ? h('p.center', `+${rw.figs} 🫐   +${rw.xp} ✨   +${rw.glow} 🪲`) : null,
-    relicId ? h('section', h('h2', 'Relic'), relicCard(relicId, h('button.primary', {
-      onclick: () => { takeRelic(r, relicId); r.rewardRelic = null; app.save(); app.refresh(); },
-    }, 'Take'))) : null,
     r.charmOffer?.length ? h('section',
       h('h2', 'Choose a charm'),
-      charmsFull(r) ? h('p.small.muted', `Your ${CHARM_SLOTS} charm slots are full: sell one from the bar above to make room.`) : null,
+      charmsFull(r) ? h('p.small.muted', `Your ${charmSlots(r)} charm slots are full: sell one from the bar above to make room.`) : null,
       ...r.charmOffer.map((id) => charmCard(id, h('button.primary', {
         disabled: charmsFull(r),
         onclick: () => { takeCharm(r, id); r.charmOffer = null; app.save(); app.refresh(); },
@@ -225,7 +220,7 @@ registerScreen('reward', (app) => {
     r.draft?.length ? h('section',
       h('h2', 'Choose a card'),
       h('p.muted.small', 'Copies of bats you already run make merges more likely; a new species adds a pattern and a clan.'),
-      h('div.card-grid', ...r.draft.map((o) => cardFace({ ...o, upgraded: false }, app.profile.roster[o.id], {
+      h('div.card-grid', ...r.draft.map((o) => cardFace({ ...o }, app.profile.roster[o.id], {
         onclick: () => takeOffer(app, o, () => { r.draft = null; app.save(); app.refresh(); }),
         footer: copiesTag(r.deck, o),
       }))),
@@ -234,8 +229,8 @@ registerScreen('reward', (app) => {
       }, 'Study'))) : null,
       h('button.ghost', { onclick: () => { r.draft = null; r.chartOffer = null; app.save(); app.refresh(); } }, 'Skip'),
     ) : null,
-    !r.draft?.length && !relicId && !r.charmOffer?.length ? h('button.big.primary', { onclick: finish }, 'Continue') : null,
-    !r.draft?.length && (relicId || r.charmOffer?.length) ? h('button.ghost', { onclick: finish }, 'Leave the rest') : null,
+    !r.draft?.length && !r.charmOffer?.length ? h('button.big.primary', { onclick: finish }, 'Continue') : null,
+    !r.draft?.length && r.charmOffer?.length ? h('button.ghost', { onclick: finish }, 'Leave the charm') : null,
   );
 });
 
@@ -256,7 +251,7 @@ registerScreen('shop', (app) => {
     header('Fig Market'),
     runHud(app),
     h('p.muted.small', 'A fruit bat colony trades in figs. Prices are in 🫐.'),
-    h('div.card-grid', ...s.cards.map((o, i) => cardFace({ ...o, upgraded: false }, app.profile.roster[o.id], {
+    h('div.card-grid', ...s.cards.map((o, i) => cardFace({ ...o }, app.profile.roster[o.id], {
       footer: h('div', copiesTag(r.deck, o), h('button.primary', {
         disabled: r.figs < o.price!,
         onclick: () => {
@@ -276,7 +271,7 @@ registerScreen('shop', (app) => {
       const e = ENHANCE_BY_ID[mod];
       return h('div.charm-card', h('div.cc-icon', e.icon), h('div', h('b', e.name), h('div.small', e.desc)), h('button.primary', {
         disabled: r.figs < e.price,
-        onclick: () => pickFromDeck(app, `Make which card ${e.name}?`, (c) => c.kind === 'bat', (c) => {
+        onclick: () => pickFromDeck(app, `Make which card ${e.name}?`, (c) => c.kind === 'bat' || mod === 'sharp', (c) => {
           if (r.figs < e.price || !enhanceCard(r, c.uid, mod)) return;
           r.figs -= e.price;
           s.enhance.splice(i, 1);
@@ -290,11 +285,6 @@ registerScreen('shop', (app) => {
       disabled: r.figs < STAR_CHART_PRICE,
       onclick: buy(STAR_CHART_PRICE, () => { studyChart(r, s.chart!); s.chart = null; }),
     }, `🫐 ${STAR_CHART_PRICE}`)) : null,
-    s.relic ? h('h2', 'Relic') : null,
-    s.relic ? relicCard(s.relic, h('button.primary', {
-      disabled: r.figs < P.relic,
-      onclick: buy(P.relic, () => { takeRelic(r, s.relic); s.relic = null; }),
-    }, `🫐 ${P.relic}`)) : null,
     h('div.actions',
       h('button', {
         disabled: s.removeUsed || r.figs < P.remove,
@@ -306,8 +296,8 @@ registerScreen('shop', (app) => {
           app.refresh();
         }),
       }, `Remove a card  🫐 ${P.remove}`),
-      h('button', { disabled: s.healUsed || r.figs < P.heal, onclick: buy(P.heal, () => { heal(r, r.caveMax * 0.2); s.healUsed = true; }) },
-        `Heal 20%  🫐 ${P.heal}`),
+      h('button', { disabled: s.healUsed || r.figs < P.heal || r.objective === 'fragile', onclick: buy(P.heal, () => { heal(r, r.caveMax * 0.2); s.healUsed = true; }) },
+        r.objective === 'fragile' ? 'Fragile cave: no healing' : `Heal 20%  🫐 ${P.heal}`),
     ),
     h('button.big.primary', { onclick: () => { leaveNode(r); app.save(); app.go({ name: 'map' }); } }, 'Leave'),
   );
@@ -324,14 +314,15 @@ registerScreen('rest', (app) => {
     runHud(app),
     h('p.center', 'The colony huddles together. Clustering saves heat: torpor and roost-mates are how small bats stretch their energy.'),
     h('div.actions.vertical',
-      h('button.big.primary', { onclick: () => { heal(r, amount); done(); } }, `Rest: heal ${fmt(amount)} cave HP`),
+      h('button.big.primary', { disabled: r.objective === 'fragile', onclick: () => { heal(r, amount); done(); } },
+        r.objective === 'fragile' ? 'Fragile cave: resting can\'t heal it' : `Rest: heal ${fmt(amount)} cave HP`),
       h('button.big', {
-        onclick: () => pickFromDeck(app, 'Upgrade which card?', (c) => !c.upgraded, (c) => {
+        onclick: () => pickFromDeck(app, 'Make which card Sharp? (replaces another enhancement)', (c) => c.mod !== 'sharp', (c) => {
           upgradeCard(r, c.uid);
-          toast(`${cardName(c)} upgraded`);
+          toast(`${cardName(c)} is Sharp`);
           done();
         }),
-      }, 'Train: upgrade a card'),
+      }, 'Train: make a card Sharp (+30%)'),
     ),
   );
 });

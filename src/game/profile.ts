@@ -1,5 +1,5 @@
 import { BAT_BY_ID, STARTER_COMMONS } from '../data/bats';
-import { RELIC_BY_ID } from '../data/relics';
+import { CHARM_BY_ID, CHARM_SLOTS } from '../data/charms';
 import { BALANCE } from '../data/balance';
 import { newOwnedBat, type OwnedBat } from './progression';
 import type { RunState } from './run';
@@ -67,7 +67,19 @@ function migrate(p: Profile) {
   const legacy = p as Profile & { cores?: unknown; lastCommander?: string };
   p.lastMatriarch ??= legacy.lastCommander;
   delete legacy.cores;
-  for (const o of Object.values(p.roster)) o.skills ??= [];
+  for (const [id, o] of Object.entries(p.roster)) {
+    o.skills ??= [];
+    // Talents became the evolved skill fork: keep the first one bought, refund the other.
+    if (o.talents) {
+      const [a, b] = o.talents;
+      if (a || b) {
+        while (o.skills.length < 4) o.skills.push(-1);
+        o.skills[3] = a ? 0 : 1;
+        if (a && b) p.xp += Math.round(BALANCE.xp.talent * BALANCE.xp.rarityMult[BAT_BY_ID[id].rarity]);
+      }
+      delete o.talents;
+    }
+  }
   p.saga ??= { unlocked: 1, stars: {} };
   if (p.run) {
     // Runs started before charms and the saga.
@@ -75,7 +87,22 @@ function migrate(p: Profile) {
     p.run.formations ??= {};
     p.run.charmOffer ??= null;
     p.run.chartOffer ??= null;
-    p.run.tally ??= { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0 };
+    p.run.tally ??= { leaks: 0, rerolls: 0, maxRoosts: 0, maxLevel: 0, wrecks: 0 };
+    p.run.tally.wrecks ??= 0;
+    // Relics became charms: carry over the ones that still exist, while slots last.
+    const legacyRun = p.run as typeof p.run & { relics?: string[]; rewardRelic?: unknown };
+    for (const id of legacyRun.relics ?? []) {
+      if (CHARM_BY_ID[id] && !p.run.charms.includes(id) && p.run.charms.length < CHARM_SLOTS) p.run.charms.push(id);
+    }
+    delete legacyRun.relics;
+    delete legacyRun.rewardRelic;
+    p.run.charms = p.run.charms.filter((id) => CHARM_BY_ID[id]);
+    // Card upgrades became the Sharp enhancement.
+    for (const c of p.run.deck) {
+      if (c.upgraded && !c.mod) c.mod = 'sharp';
+      delete c.upgraded;
+    }
+    if (p.run.shop) delete (p.run.shop as { relic?: unknown }).relic;
     if (p.run.shop) Object.assign(p.run.shop, { charms: p.run.shop.charms ?? [], enhance: p.run.shop.enhance ?? [], chart: p.run.shop.chart ?? null });
   }
   delete legacy.lastCommander;
@@ -99,7 +126,6 @@ export function loadProfile(): Profile {
     p.seenEnemies ??= [];
     migrate(p);
     // Relics can be renamed or removed between versions.
-    if (p.run) p.run.relics = p.run.relics.filter((id) => RELIC_BY_ID[id]);
     return p;
   } catch {
     return newProfile();

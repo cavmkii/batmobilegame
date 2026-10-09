@@ -6,6 +6,8 @@ import type { Trait } from './types';
  * Skills shape how a bat plays (wider spread, more bats, a new attack) more than raw stats.
  */
 export const SKILL_LEVELS = [3, 6, 9] as const;
+/** The fourth fork (the bat's two old talents) unlocks with evolution instead of a level. */
+export const EVOLVED_FORK = 3;
 
 export type SkillEffect =
   | { kind: 'hpPct'; pct: number }
@@ -22,7 +24,11 @@ export type SkillEffect =
   | { kind: 'batch'; n: number }
   | { kind: 'trait'; trait: Trait }
   /** Extra pattern tiles (dCol, dRow), so merges spread further. */
-  | { kind: 'spread'; tiles: [number, number][] };
+  | { kind: 'spread'; tiles: [number, number][] }
+  /** Bats fly faster. */
+  | { kind: 'speedPct'; pct: number }
+  /** Guano cost change. */
+  | { kind: 'cost'; delta: number };
 
 export interface SkillNode {
   name: string;
@@ -108,5 +114,7 @@ export function describeSkill(e: SkillEffect, describeTrait: (t: Trait) => strin
     case 'batch': return `Releases +${e.n} bat per refill`;
     case 'trait': return describeTrait(e.trait);
     case 'spread': return `Pattern +${e.tiles.length} tile${e.tiles.length > 1 ? 's' : ''}`;
+    case 'speedPct': return `Bats fly ${e.pct}% faster`;
+    case 'cost': return `Costs ${Math.abs(e.delta)} ${e.delta < 0 ? 'less' : 'more'} guano`;
   }
 }

@@ -1,25 +1,31 @@
 import { BALANCE } from '../data/balance';
 import { BAT_BY_ID } from '../data/bats';
 import { CLANS, RARITY_COLOR } from '../data/clans';
-import { RELIC_BY_ID } from '../data/relics';
 import { MODIFIER_BY_ID } from '../data/setup';
 import { BOSS_RULE_BY_ID } from '../data/bossRules';
-import { CHARM_BY_ID, CHARM_SLOTS } from '../data/charms';
-import { ENHANCE_BY_ID } from '../data/enhance';
+import { CHARM_BY_ID } from '../data/charms';
+import { ENHANCE_BY_ID, isSharp } from '../data/enhance';
 import { FORMATIONS, type FormationId } from '../data/formations';
 import { MATRIARCH_BY_ID } from '../data/matriarchs';
+import { HUNT_PCT, OBJECTIVES } from '../data/saga';
 import { ENEMY_BY_ID } from '../data/enemies';
 import { SPELL_BY_ID } from '../data/spells';
 import { TERRAIN } from '../data/terrain';
 import type { Card } from '../data/types';
 import { Defense } from '../game/defense';
 import { ATTACK_LABEL, attackLabel, attackStyle, blueprint, describeTrait } from '../game/progression';
-import { applyLevelResult, resolveBattle } from '../game/run';
+import { applyLevelResult, charmSlots, resolveBattle } from '../game/run';
 import { FORMATION_COLOR, FieldRenderer, VIEW_H, VIEW_W, type Highlight } from '../render/fieldRenderer';
 import { registerScreen } from './app';
 import { batImg, clanPips, patternGrid, rarityOf } from './components';
 import { h, modal } from './dom';
 import { endRun } from './runScreens';
+
+const LOST_TEXT = {
+  cave: 'The cave has fallen.',
+  nursery: 'The nursery was wrecked.',
+  hunt: `Too many got away: the hunt needed ${HUNT_PCT}% of the enemies killed.`,
+} as const;
 
 const hash = (s: string) => [...s].reduce((a, c) => (Math.imul(a, 31) + c.charCodeAt(0)) >>> 0, 7);
 
@@ -42,7 +48,6 @@ registerScreen('battle', (app) => {
     deck: r.deck,
     matriarchId: r.matriarchId,
     roster: app.profile.roster,
-    relics: r.relics,
     caveHp: r.caveHp,
     caveMax: r.caveMax,
     seed: (r.rngState ^ hash(node.id)) >>> 0,
@@ -52,7 +57,7 @@ registerScreen('battle', (app) => {
     bossRule: node.bossRule,
     difficulty: r.difficulty,
     formationLevels: r.formations,
-    objective: node.type === 'battle' ? r.objective : undefined,
+    objective: r.objective === 'fragile' || node.type === 'battle' ? r.objective : undefined,
   });
   // Field guide: enemies count as met once their night begins.
   const meet = () => {
@@ -235,7 +240,7 @@ registerScreen('battle', (app) => {
     return { slots, pattern, batId, peek: peekTiles(), preview: null, footprint: new Set() };
   };
 
-  const bpOf = (c: Card) => blueprint(c.id, app.profile.roster[c.id], c.upgraded);
+  const bpOf = (c: Card) => blueprint(c.id, app.profile.roster[c.id], isSharp(c));
   const describeBat = (batId: string, upgraded: boolean): string => {
     const bp = blueprint(batId, app.profile.roster[batId], upgraded);
     const traits = [attackLabel(bp.traits, bp.stats.range), ...bp.traits.filter((t) => t.kind !== 'multiHit' && t.kind !== 'aoe').map(describeTrait)].join(', ');
@@ -249,12 +254,6 @@ registerScreen('battle', (app) => {
     if (!c) return;
     pending = null;
     const s: Sel = { kind: 'pool', i };
-    if (c.kind === 'spell' && same(sel, s)) {
-      if (d.takeSpell(i)) note = `${SPELL_BY_ID[c.id].name} added to your spells.`;
-      else note = d.phase !== 'day' ? 'Take spells during the day.' : `You can hold at most ${BALANCE.economy.spellHandMax} spells.`;
-      sel = null;
-      return;
-    }
     sel = same(sel, s) ? null : s;
     note = '';
     if (sel && c.kind === 'bat') onTutorial('select');
@@ -345,7 +344,7 @@ registerScreen('battle', (app) => {
     h('span.cost', cost),
     card.mod ? h('span.mod-badge', { title: ENHANCE_BY_ID[card.mod].name }, ENHANCE_BY_ID[card.mod].icon) : '',
     kind === 'bat' ? batImg(id, 2) : h('div.spell-icon', SPELL_BY_ID[id].icon),
-    h('div.hc-name', name.replace(/ Bat$/, '') + (card.upgraded ? '+' : '')),
+    h('div.hc-name', name.replace(/ Bat$/, '')),
     kind === 'bat' ? h('div.hc-atk', clanPips(clans), ' ', ATTACK_LABEL[attackStyle(bpOf(card).traits, bpOf(card).stats.range)].icon) : clanPips(clans),
     kind === 'bat' ? patternGrid(id, 'xs', d.patternOf(id)) : '',
     o.tag ? h('div.tax', o.tag) : '',
@@ -369,7 +368,7 @@ registerScreen('battle', (app) => {
     guano.replaceChildren(h('span.g-icon', '◆'), h('b', String(d.guano)),
       h('span.small.muted', isDay ? ` guano · +${d.projectedIncome() + d.interestNow()} at dawn` : ' guano'),
       isDay && d.interestNow() ? h('span.small.interest', ` (${d.interestNow()} interest)`) : '');
-    guano.title = `Dawn income: +2, plus 1 per 2 bats housed in standing roosts, plus 1 per ${d.rule.killsPerGuano} kills, plus Clusters, plus interest: +1 per ${BALANCE.interest.per} unspent (max ${d.interestCap})`;
+    guano.title = `Dawn income: +2, plus 1 per 2 bats housed in standing roosts, plus Clusters, plus interest: +1 per ${BALANCE.interest.per} unspent (max ${d.interestCap})`;
     renderClans(isDay);
     piles.textContent = `deck ${d.drawPile.length} · discard ${d.discard.length}`;
     refreshBtn.textContent = `↻ ${d.refreshCost}`;
@@ -381,11 +380,10 @@ registerScreen('battle', (app) => {
       h('div.row-label', 'pool'),
       ...d.pool.map((c, i) => cardEl({
         card: c, sel: { kind: 'pool', i }, onTap: () => onPool(i),
-        playable: !!c && isDay && (c.kind === 'spell' ? d.canTakeSpell(i) : d.guano >= d.cardCost(c)),
-        tag: c?.kind === 'spell' ? 'take' : undefined,
+        playable: !!c && isDay && d.guano >= d.cardCost(c),
       })),
       refreshBtn,
-      d.spells.length ? h('div.row-label', 'spells') : '',
+      d.spells.length || d.spellsLeft ? h('div.row-label', `spells${d.spellsLeft ? ` +${d.spellsLeft}` : ''}`) : '',
       ...d.spells.map((c, i) => cardEl({ card: c, sel: { kind: 'spell', i }, onTap: () => onSpell(i), playable: d.canCast(i), tag: 'instant' })),
     );
 
@@ -402,9 +400,7 @@ registerScreen('battle', (app) => {
     if (!text && sel) {
       if (sel.kind === 'pool') {
         const c = d.pool[sel.i];
-        if (c) text = c.kind === 'bat'
-          ? describeBat(c.id, c.upgraded)
-          : `${SPELL_BY_ID[c.id].name}: ${SPELL_BY_ID[c.id].desc} Tap again to take it (free); casting costs ${d.cardCost(c)} guano.`;
+        if (c) text = describeBat(c.id, isSharp(c));
       } else if (sel.kind === 'spell') {
         const c = d.spells[sel.i];
         if (c) text = `${SPELL_BY_ID[c.id].name}: ${SPELL_BY_ID[c.id].desc} ${d.canCast(sel.i) ? 'Tap again to cast.' : d.phase === 'day' ? 'Cast it at night.' : 'Not enough guano.'}`;
@@ -414,7 +410,7 @@ registerScreen('battle', (app) => {
       text = isDay
         ? d.day === 1
           ? `${d.previewHidden ? 'New Moon: you won\'t see tonight\'s enemies in advance.' : 'Tonight\'s enemies are shown at the top.'} Build roosts in the columns they'll come down. Two roosts of the same bat and level merge into one a level higher: tap one, then the other. ↻ rerolls the pool for ${d.refreshCost ? `${d.refreshCost} guano` : "free (Thrift, once a day)"}.`
-          : d.previewHidden ? `Dawn: +${d.lastIncome} guano. New Moon: tonight's enemies are hidden.` : `Dawn: +${d.lastIncome} guano (${d.lastIncomeParts.base} base, ${d.lastIncomeParts.roosts} from roosts, ${d.lastIncomeParts.kills} from kills${d.lastIncomeParts.clans ? `, ${d.lastIncomeParts.clans} clusters` : ''}${d.lastIncomeParts.interest ? `, ${d.lastIncomeParts.interest} interest` : ''}${d.lastIncomeParts.relic ? `, ${d.lastIncomeParts.relic} relic` : ''}). Tonight: ${tonightSummary(d)}.`
+          : d.previewHidden ? `Dawn: +${d.lastIncome} guano. New Moon: tonight's enemies are hidden.` : `Dawn: +${d.lastIncome} guano (${d.lastIncomeParts.base} base, ${d.lastIncomeParts.roosts} from roosts${d.lastIncomeParts.kills ? `, ${d.lastIncomeParts.kills} from kills` : ''}${d.lastIncomeParts.clans ? `, ${d.lastIncomeParts.clans} clusters` : ''}${d.lastIncomeParts.interest ? `, ${d.lastIncomeParts.interest} interest` : ''}${d.lastIncomeParts.charms ? `, ${d.lastIncomeParts.charms} charms` : ''}). Tonight: ${tonightSummary(d)}.`
         : 'Bats fly out on their own. Spells are instants: tap one twice to cast.';
     }
     info.textContent = text;
@@ -472,19 +468,27 @@ registerScreen('battle', (app) => {
         mat ? row('♛', `${BAT_BY_ID[mat.batId].name}: ${mat.title}`, mat.rule) : '',
         boss ? row(boss.icon, `Boss rule: ${boss.name}`, boss.desc) : '',
         r.restrict ? row('🔒', 'Clan restriction', `Only ${CLANS[r.restrict].name} bats can be drafted.`) : '',
-        d.slots.some((s) => s.roost?.nursery) ? row('🍼', 'Nursery', 'If the nursery is wrecked, the level is lost.') : '',
+        r.objective ? row(OBJECTIVES[r.objective].icon, OBJECTIVES[r.objective].name, OBJECTIVES[r.objective].desc
+          + (r.objective === 'hunt' ? ` So far: ${d.hunt.killed} of ${d.hunt.spawned} killed.` : '')) : '',
         ...(r.modifiers ?? []).map((id) => MODIFIER_BY_ID[id] ? row(MODIFIER_BY_ID[id].icon, MODIFIER_BY_ID[id].name, MODIFIER_BY_ID[id].desc) : ''),
         r.difficulty && r.difficulty > 1 ? row('📈', 'Saga depth', `Enemies have +${Math.round((r.difficulty - 1) * 100)}% HP and attack.`) : '',
       ].filter(Boolean)),
-      sec(`Charms (${d.charms.size}/${CHARM_SLOTS})`, [...d.charms].map((id) => row(CHARM_BY_ID[id].icon, CHARM_BY_ID[id].name, CHARM_BY_ID[id].desc))),
+      sec(`Charms (${d.charms.size}/${charmSlots(r)})`, [...d.charms].map((id) => row(CHARM_BY_ID[id].icon, CHARM_BY_ID[id].name, CHARM_BY_ID[id].desc))),
       sec(isDay ? 'Formations standing (lock in at dusk)' : 'Formations tonight', FORMATIONS.filter((f) => counts.has(f.id)).map((f) =>
         row(f.icon, `${f.name}${counts.get(f.id)! > 1 ? ` ×${counts.get(f.id)}` : ''}`, f.text(d.formationValue(f.id)), `level ${d.formationLevel(f.id)}`))),
       sec('Star charts studied', FORMATIONS.filter((f) => (r.formations[f.id] ?? 1) > 1).map((f) =>
         row('✦', f.name, `Level ${r.formations[f.id]}: ${f.text(d.formationValue(f.id))}`))),
-      sec('Relics', r.relics.filter((id) => RELIC_BY_ID[id]).map((id) => row(RELIC_BY_ID[id].icon, RELIC_BY_ID[id].name, RELIC_BY_ID[id].desc))),
       sec('Active spells', timed),
+      sec('How nights work', [
+        row('🎯', 'Enemy targets', 'Enemies walk straight down their column. They attack bats in reach first, then the nearest roost in their column, then the cave.'),
+        row('🏔', 'Leaks', `An enemy that reaches the cave hits it once for ${BALANCE.night.leakMult}× its attack, then is gone.`),
+        row('🔨', 'Wrecked roosts', `A wrecked roost stops blocking and releases no bats until dawn, when it is rebuilt at ${BALANCE.rebuildHpPct}% HP${d.charms.has('phoenix') ? ' (Phoenix Roost: full HP, one level lower)' : ''}.`),
+        row('🛡', 'Armour', `Damage taken × ${BALANCE.armor.K} / (${BALANCE.armor.K} + armour): 50 armour takes a third off, 100 halves it. Bats gain ${BALANCE.armor.perRoostLevel} armour per roost level above 1 (mega bats +${BALANCE.armor.mega}). Some enemies are armoured too (beetles, owls, the bosses).`),
+        d.slots.some((s) => s.roost && !s.roost.nursery && BAT_BY_ID[s.roost.batId].clans.includes('SAN'))
+          ? row('🩸', 'Vampire sharing', `At dawn, each vampire roost heals its neighbouring roosts ${BALANCE.adjacency.vampireDawnHealPct}%.`) : '',
+      ].filter(Boolean)),
       sec('Economy', [
-        row('◆', 'Dawn income', `About +${d.projectedIncome() + d.interestNow()} guano: base, 1 per ${BALANCE.economy.batsPerGuano} bats housed, 1 per ${d.rule.killsPerGuano} kills, Clusters.`),
+        row('◆', 'Dawn income', `About +${d.projectedIncome() + d.interestNow()} guano: base, 1 per ${BALANCE.economy.batsPerGuano} bats housed, Clusters${d.charms.has('scavenger') ? ', Scavenger kills' : ''}.`),
         row('🏦', 'Interest', `+1 guano per ${BALANCE.interest.per} unspent at dawn, up to ${d.interestCap}. Now: +${d.interestNow()}.`),
         row('↻', 'Reroll', d.refreshCost ? `${d.refreshCost} guano` : 'Free (once today)'),
       ]),
@@ -543,7 +547,7 @@ registerScreen('battle', (app) => {
     overlay.classList.add('show');
     overlay.replaceChildren(h('div.result-box',
       h('h1.title', won ? (node.type === 'boss' ? 'BOSS DEFEATED' : 'DAWN') : 'DEFEAT'),
-      h('p', won ? `${d.encounter.name}: survived ${d.nights} nights.` : 'The cave has fallen.'),
+      h('p', won ? `${d.encounter.name}: survived ${d.nights} nights.` : LOST_TEXT[d.lostReason]),
       h('button.big.primary', { onclick: () => (r.status === 'active' ? app.go({ name: 'reward' }) : endRun(app)) }, 'Continue'),
     ));
   };

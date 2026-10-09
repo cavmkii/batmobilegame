@@ -7,10 +7,12 @@ export const BALANCE = {
   units: { rangePerTile: 100, minMelee: 0.35, batSpeed: 2.5 / 100, enemySpeed: 1.6 / 100 },
   /**
    * Guano: the in-level currency for placing bats, refreshing the pool and casting spells.
-   * Dawn income = perDawn + 1 per batsPerGuano bats housed in standing roosts + 1 per killsPerGuano kills.
+   * Dawn income = perDawn + 1 per batsPerGuano bats housed in standing roosts (+ Clusters, interest, charms).
    * Roosts are the economy: early on it's a grind; investing in bats raises income, spells and rerolls don't.
    */
-  economy: { startGuano: 6, perDawn: 2, batsPerGuano: 2, killsPerGuano: 4, refreshCost: 2, poolSize: 2, spellHandMax: 3 },
+  economy: { startGuano: 6, perDawn: 2, batsPerGuano: 2, refreshCost: 2, poolSize: 2, spellHandMax: 3 },
+  /** Spells live in their own hand, not the pool: draw `startHand` at the start of a level, +1 each dawn. */
+  spells: { startHand: 2, perDawn: 1 },
   /** Unspent guano earns interest at dawn: +1 per `per`, up to `cap` (Balatro-style). */
   interest: { per: 5, cap: 3 },
   /**
@@ -18,7 +20,7 @@ export const BALANCE = {
    * (a pool card counts as a level-1 roost). Each level adds a bat (up to maxExtraBats) and
    * statPct to bat stats, so a merged roost is worth roughly the two it replaced.
    * From megaLevel a roost holds one mega bat instead of a group. There's no cap: stats keep growing.
-   * Bats from roosts at armorLevel and up wear armour (visual).
+   * Bats from roosts at armorLevel and up are drawn wearing armour (their armour stat grows every level).
    */
   roostLevel: { megaLevel: 10, armorLevel: 5, statPct: 25, hpPct: 20, batsPerLevel: 1, maxExtraBats: 4, megaHpMult: 3, megaAtkMult: 1.5, megaRespawnMult: 2 },
   /** An enemy that reaches the cave hits once for atk × leakMult, then is gone (classic TD leak). */
@@ -28,6 +30,12 @@ export const BALANCE = {
   rebuildHpPct: 50,
   knockback: { distance: 0.5, duration: 0.4 },
   adjacency: { vampireDawnHealPct: 20 },
+  /**
+   * Armour, as in LoL/Dota/Diablo: damage taken × K / (K + armour), so each point matters a bit less
+   * than the last and it never reaches 100%. 100 armour halves damage.
+   * Bats gain perRoostLevel armour for each roost level above 1; a mega bat gets `mega` more.
+   */
+  armor: { K: 100, perRoostLevel: 8, mega: 40 },
   /** Stats gain this fraction of base per level above 1. */
   levelScaling: 0.2,
   /** Enemy stats scale this much per map row. */
@@ -67,7 +75,6 @@ export const BALANCE = {
   },
   shop: {
     cardPrice: { common: 45, rare: 75, epic: 120, legendary: 200 } as Record<Rarity, number>,
-    relic: 150,
     remove: 75,
     heal: 50,
   },

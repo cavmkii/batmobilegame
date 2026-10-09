@@ -62,7 +62,7 @@ describe('collection rewards', () => {
 describe('run setup: maps and modifiers', () => {
   const base = (over: Partial<import('../src/game/defense').DefenseConfig> = {}) => ({
     encounterId: 'moth_cloud', row: 0, deck: [], matriarchId: 'ghost_bat',
-    roster: { ghost_bat: newOwnedBat() }, relics: [], caveHp: 1000, caveMax: 1000, seed: 1, ...over,
+    roster: { ghost_bat: newOwnedBat() }, caveHp: 1000, caveMax: 1000, seed: 1, ...over,
   });
 
   it('weights terrain by biome', async () => {
@@ -185,5 +185,41 @@ describe('skill trees, names and attack styles', async () => {
     expect(attackStyle(BAT_BY_ID.lesser_bulldog.traits, BAT_BY_ID.lesser_bulldog.stats.range)).toBe('sonar');
     expect(attackStyle(BAT_BY_ID.long_eared.traits, BAT_BY_ID.long_eared.stats.range)).toBe('chain');
     expect(attackStyle(BAT_BY_ID.pallid.traits, BAT_BY_ID.pallid.stats.range)).toBe('splash');
+  });
+});
+
+describe('matriarch tree', async () => {
+  const { TREE_LINKS, treeNodes } = await import('../src/data/matriarchTree');
+  const { allocate, canAllocate, canRefund, pointsLeft, refund, treeEffects } = await import('../src/game/matriarchTree');
+  const { MATRIARCHS } = await import('../src/data/matriarchs');
+
+  it('every matriarch has a connected tree with her own branch', () => {
+    for (const m of MATRIARCHS) {
+      const ids = new Set(treeNodes(m.batId).map((n) => n.id));
+      expect(ids.has('mK'), m.batId).toBe(true);
+      for (const [a, b] of TREE_LINKS) expect(ids.has(a) && ids.has(b), `${a}-${b}`).toBe(true);
+    }
+  });
+
+  it('spends points along connected paths and only refunds leaves', () => {
+    const o = { ...newOwnedBat(), level: 4 }; // 3 points
+    expect(canAllocate('ghost_bat', o, 'h2')).toBe(false); // not connected
+    expect(allocate('ghost_bat', o, 'h1')).toBe(true);
+    expect(allocate('ghost_bat', o, 'h2')).toBe(true);
+    expect(allocate('ghost_bat', o, 'c2')).toBe(true); // cross link from h2
+    expect(pointsLeft('ghost_bat', o)).toBe(0);
+    expect(canAllocate('ghost_bat', o, 'h3')).toBe(false); // out of points
+    expect(canRefund('ghost_bat', o, 'h1')).toBe(false); // h2 and c2 hang off it
+    expect(refund('ghost_bat', o, 'c2')).toBe(true);
+    expect(treeEffects('ghost_bat', o)).toEqual([{ kind: 'startGuano', n: 2 }, { kind: 'interestCap', n: 1 }]);
+  });
+
+  it('applies tree effects in a level: keystone trade-offs and her notable', async () => {
+    const { Defense } = await import('../src/game/defense');
+    const o = { ...newOwnedBat(), level: 20, tree: ['t1', 't2', 't3', 'tK', 'm1', 'm2', 'mK'] };
+    const d = new Defense({ encounterId: 'moth_cloud', row: 0, deck: [], matriarchId: 'ghost_bat', roster: { ghost_bat: o }, caveHp: 1000, caveMax: 1000, seed: 1 });
+    expect(d.rule.feedingTop).toBe(2);
+    const plain = new Defense({ encounterId: 'moth_cloud', row: 0, deck: [], matriarchId: 'ghost_bat', roster: { ghost_bat: newOwnedBat() }, caveHp: 1000, caveMax: 1000, seed: 1 });
+    expect(d.projectedIncome()).toBe(plain.projectedIncome() + 1); // Larder
   });
 });

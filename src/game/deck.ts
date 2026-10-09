@@ -2,7 +2,7 @@ import { BALANCE } from '../data/balance';
 import { BATS, BAT_BY_ID } from '../data/bats';
 import { MATRIARCH_BY_ID } from '../data/matriarchs';
 import { SPELLS } from '../data/spells';
-import type { Card, ClanId } from '../data/types';
+import type { Card, CardMod, ClanId } from '../data/types';
 import type { Profile } from './profile';
 
 export const isBasic = (card: Pick<Card, 'kind' | 'id'>) => card.kind === 'bat' && !!BAT_BY_ID[card.id].basic;
@@ -30,11 +30,11 @@ export function validateSetup(p: Profile, matriarchId: string, flock: string[], 
 }
 
 let uidCounter = 0;
-export const newCard = (kind: Card['kind'], id: string, upgraded = false): Card => ({
+export const newCard = (kind: Card['kind'], id: string, mod?: CardMod): Card => ({
   uid: `${Date.now().toString(36)}-${(uidCounter++).toString(36)}`,
   kind,
   id,
-  upgraded,
+  ...(mod ? { mod } : {}),
 });
 
 /**
