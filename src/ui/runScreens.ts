@@ -1,5 +1,5 @@
 import { BALANCE } from '../data/balance';
-import { BIOME_BY_ID, MODIFIER_BY_ID, rewardBonusPct } from '../data/setup';
+import { BIOME_BY_ID, MODIFIER_BY_ID } from '../data/setup';
 import { MATRIARCH_BY_ID } from '../data/matriarchs';
 import { BAT_BY_ID } from '../data/bats';
 import { ENCOUNTERS } from '../data/enemies';
@@ -131,14 +131,22 @@ registerScreen('map', (app) => {
     }, NODE_ICON[n.type]);
   });
   const mat = MATRIARCH_BY_ID[r.matriarchId];
+  const mapEl = h('div.map', { style: `height:${H}px` }, svg, ...nodes);
+  // The playable row is low on a tall map: bring it into view.
+  setTimeout(() => mapEl.querySelector('.map-node.available')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60);
   return h('div.screen',
     header(`${BIOME_BY_ID[r.biome ?? '']?.icon ?? ''} ${BIOME_BY_ID[r.biome ?? '']?.name ?? 'Night Flight'}`, () => app.go({ name: 'home' }), h('button.ghost', { onclick: () => app.go({ name: 'deck' }) }, `Deck ${r.deck.length}`)),
     runHud(app),
     !app.profile.tutorialDone ? h('div.coach', h('div.coach-step', 'The run map'), h('div', 'A run is a path up this map to the boss at the top. Each ⚔ is a level of several nights. Tap a glowing node to start.')) : null,
-    r.modifiers?.length ? h('div.mod-chips', ...r.modifiers.map((id) => h('span.tag', { title: MODIFIER_BY_ID[id]?.desc }, `${MODIFIER_BY_ID[id]?.icon} ${MODIFIER_BY_ID[id]?.name}`)), h('span.small.muted', ` rewards +${rewardBonusPct(r.modifiers)}%`)) : null,
-    r.saga ? h('div.center.small', h('b', `Node ${r.saga}: ${sagaNode(r.saga).name}`), ' · ', sagaNode(r.saga).goals.map((g) => `★ ${GOALS[g].name}`).join(' · ')) : null,
+    h('div.chapter-head', h('b', `Chapter ${r.chapter}: ${sagaNode(r.chapter).name}`), h('div.small.muted', `${Math.max(0, ...r.cleared.map((id) => r.map.nodes[id].row + 1))}/${r.map.rows.length} · ★ ${sagaNode(r.chapter).goals.map((g) => GOALS[g].name).join(', ')}`)),
+    r.modifiers?.length ? h('div.mod-chips', ...r.modifiers.map((id) => h('span.tag', { title: MODIFIER_BY_ID[id]?.desc }, `${MODIFIER_BY_ID[id]?.icon} ${MODIFIER_BY_ID[id]?.name}`))) : null,
+    r.charmOffer?.length && !r.activeNode ? h('section.supply',
+      h('h2', 'Checkpoint supplies'),
+      h('p.small.muted', `You start at chapter ${r.startChapter} with 🫐 ${r.figs} and one free charm.`),
+      ...r.charmOffer.map((id) => charmCard(id, h('button.primary', { onclick: () => { takeCharm(r, id); r.charmOffer = null; app.save(); app.refresh(); } }, 'Take'))),
+    ) : null,
     h('button.map-cmd', { onclick: () => toast(`${BAT_BY_ID[r.matriarchId].name}, ${mat.title}: ${mat.rule}`) }, batImg(r.matriarchId, 1), h('span.small', `♛ ${mat.title}`), h('span.small.muted', mat.rule)),
-    h('div.map', { style: `height:${H}px` }, svg, ...nodes),
+    mapEl,
     h('div.legend.small.muted', ...Object.entries(NODE_ICON).map(([k, v]) => h('span', `${v} ${k}`))),
     h('button.ghost.small', {
       onclick: () => {
@@ -205,7 +213,11 @@ registerScreen('reward', (app) => {
     app.go({ name: 'map' });
   };
   return h('div.screen',
-    header(node.type === 'treasure' ? 'Treasure' : 'Victory!'),
+    header(r.chapterCleared ? `Chapter ${r.chapter} cleared!` : node.type === 'treasure' ? 'Treasure' : 'Victory!'),
+    r.chapterCleared ? h('div.chapter-clear',
+      h('p.big-stars', '★'.repeat(app.profile.saga.stars[r.chapter] ?? 1) + '☆'.repeat(3 - (app.profile.saga.stars[r.chapter] ?? 1))),
+      h('p.small', `The boss falls. +🫐 50 and the cave mends a little. Chapter ${r.chapter + 1} is now a checkpoint. Pick a charm and a rare card, then the run goes on.`),
+    ) : null,
     runHud(app),
     rw ? h('p.center', `+${rw.figs} 🫐   +${rw.xp} ✨   +${rw.glow} 🪲`) : null,
     r.charmOffer?.length ? h('section',
@@ -352,18 +364,21 @@ registerScreen('event', (app, s) => {
 // ---------------- Run end ----------------
 
 registerScreen('runEnd', (app, s) => {
+  const p = app.profile;
+  const newCheckpoint = s.checkpoint > s.startChapter;
   return h('div.screen',
     h('div.hero',
-      h('h1.title', s.cleared ? (s.saga ? `Node ${s.saga} cleared!` : 'Act cleared!') : 'The colony retreats'),
-      s.saga && s.cleared ? h('p.big-stars', '★'.repeat(s.stars ?? 0) + '☆'.repeat(3 - (s.stars ?? 0))) : null,
-      h('p', s.cleared ? `Clear bonus ×${BALANCE.rewards.clearBonusMult} applied.` : 'Rewards earned so far are kept.'),
+      h('h1.title', 'The cave falls'),
+      h('p', `Your colony reached chapter ${s.chapter} (${s.depth} levels deep${s.depth >= p.stats.bestRow ? ', your best yet' : ''}).`),
+      newCheckpoint ? h('p.accent', `New checkpoint: runs can now start from chapter ${s.checkpoint}.`) : h('p.muted', `Checkpoint: chapter ${s.checkpoint}.`),
       currencyBar([['✨', `+${fmt(s.xp)}`], ['🪲', `+${fmt(s.glow)}`]]),
+      s.chapter > s.startChapter ? h('p.small.muted', `+${25 * (s.chapter - s.startChapter)}% for chapters cleared this run.`) : null,
     ),
+    h('p.center.small', 'Spend XP on levels, skills and your matriarch\'s tree, then go again.'),
     h('div.menu',
-      s.saga ? h('button.big.primary', { onclick: () => app.go({ name: 'saga' }) }, s.cleared ? 'Saga map: next node' : 'Saga map') : null,
-      h(`button.big${s.saga ? '' : '.primary'}`, { onclick: () => app.go({ name: 'roster' }) }, 'Upgrade bats'),
+      h('button.big.primary', { onclick: () => app.go({ name: 'roster' }) }, 'Upgrade bats'),
+      h('button.big', { onclick: () => app.go({ name: 'saga' }) }, 'New run'),
       h('button.big', { onclick: () => app.go({ name: 'summon' }) }, 'Summon'),
-      h('button.big', { onclick: () => app.go({ name: 'home' }) }, 'Home'),
     ),
   );
 });

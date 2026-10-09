@@ -24,7 +24,7 @@ describe('matriarch and starting flock', () => {
   it('validates the setup', () => {
     const p = starter('ghost_bat');
     expect(validateSetup(p, 'ghost_bat', ['little_brown', 'egyptian_fruit', 'pallas_tongue'])).toBeNull();
-    expect(validateSetup(p, 'ghost_bat', ['little_brown', 'egyptian_fruit', 'pallas_tongue', 'lesser_bulldog'])).toMatch(/up to/);
+    expect(validateSetup(p, 'ghost_bat', ['little_brown', 'egyptian_fruit', 'pallas_tongue', 'lesser_bulldog', 'common_vampire'])).toMatch(/up to/);
     expect(validateSetup(p, 'ghost_bat', ['little_brown', 'little_brown'])).toMatch(/once/);
     expect(validateSetup(p, 'ghost_bat', ['hammerhead'])).toMatch(/collection/);
     expect(validateSetup(p, 'flying_fox', [])).toMatch(/own/);
@@ -139,8 +139,8 @@ describe('run flow', () => {
   it('starts, clears a battle, drafts, and banks rewards on loss', () => {
     const p = starter('ghost_bat');
     const run = startRun(p, 'ghost_bat', ['little_brown', 'common_vampire'], 42);
-    expect(run.deck.length).toBe(8);
-    expect(run.deck.filter((c) => c.id === 'fledgling').length).toBe(4);
+    expect(run.deck.length).toBe(16);
+    expect(run.deck.filter((c) => c.id === 'fledgling').length).toBe(10);
     expect(p.flock).toEqual(['little_brown', 'common_vampire']);
 
     const first = availableNodes(run)[0];
@@ -154,14 +154,14 @@ describe('run flow', () => {
     run.status = 'lost';
     const xpBefore = p.xp;
     const res = finishRun(p, run);
-    expect(res.cleared).toBe(false);
+    expect(res.chapter).toBe(1);
     expect(p.xp).toBe(xpBefore + run.xpEarned);
     expect(p.run).toBeUndefined();
   });
 });
 
 describe('saga', async () => {
-  const { sagaNode, SAGA_ROWS, AUTHORED_COUNT } = await import('../src/data/saga');
+  const { sagaNode, CHAPTER_ROWS, CHECKPOINT_FIGS, AUTHORED_COUNT } = await import('../src/data/saga');
   const { applyLevelResult, charmOffers, sellCharm, takeCharm } = await import('../src/game/run');
 
   it('generates stable, valid nodes forever, with rising difficulty', () => {
@@ -174,23 +174,44 @@ describe('saga', async () => {
     expect(sagaNode(AUTHORED_COUNT + 1).name.length).toBeGreaterThan(0);
   });
 
-  it('runs a saga node as a short map with its twists, then awards stars and unlocks the next', () => {
+  it('runs chapter after chapter: the boss gives stars and a checkpoint, and the deck carries on', async () => {
+    const { leaveNode } = await import('../src/game/run');
     const p = starter('ghost_bat');
-    const run = startRun(p, 'ghost_bat', ['little_brown'], 9, { saga: 5 }); // insectivores only
-    expect(run.map.rows.length).toBe(SAGA_ROWS);
-    expect(run.restrict).toBe('INS');
+    const run = startRun(p, 'ghost_bat', ['little_brown'], 9);
+    expect(run.chapter).toBe(1);
+    expect(run.map.rows.length).toBe(CHAPTER_ROWS);
     const boss = Object.values(run.map.nodes).find((n) => n.type === 'boss')!;
-    expect(boss.bossRule).toBe(sagaNode(5).bossRule);
-    expect(boss.depth).toBe(Math.min(BALANCE.run.rows - 1, 2 + 5));
-    // A non-insectivore can't join the flock.
-    expect(() => startRun(starter('ghost_bat'), 'ghost_bat', ['egyptian_fruit'], 9, { saga: 5 })).toThrow(/only allows/);
+    expect(boss.bossRule).toBe(sagaNode(1).bossRule);
+    expect(run.map.rows[CHAPTER_ROWS - 1]).toEqual([boss.id]);
+    // Walk straight to the boss and beat it.
+    run.currentNode = run.map.rows[CHAPTER_ROWS - 2].find((id) => run.map.nodes[id].next.includes(boss.id))!;
+    run.deck.push({ uid: 'keep-me', kind: 'bat', id: 'little_brown' });
+    enterNode(run, boss.id);
+    run.tally.maxLevel = 6; // the 'tall' goal on chapter 1
+    resolveBattle(run, true, 900, p);
+    expect(run.status).toBe('active');
+    expect(run.chapterCleared).toBe(true);
+    expect(run.charmOffer?.length).toBe(3);
+    expect(p.saga.stars[1]).toBe(3); // clear + tall + healthy (900/1000)
+    expect(p.saga.unlocked).toBe(2);
+    leaveNode(run);
+    expect(run.chapter).toBe(2);
+    expect(run.cleared).toEqual([]);
+    expect(run.deck.some((c) => c.uid === 'keep-me')).toBe(true);
+    expect(run.map.nodes[run.map.rows[CHAPTER_ROWS - 1][0]].bossRule).toBe(sagaNode(2).bossRule);
+  });
+
+  it('starts later runs from a checkpoint with supplies; chapter restrictions limit drafts', () => {
+    const p = starter('ghost_bat');
+    p.saga.unlocked = 5;
+    expect(startRun(p, 'ghost_bat', ['little_brown'], 3, 99).chapter).toBe(5); // clamped to the checkpoint
+    const run = startRun(p, 'ghost_bat', ['little_brown'], 3, 5); // insectivores only
+    expect(run.figs).toBe(CHECKPOINT_FIGS * 4);
+    expect(run.charmOffer?.length).toBe(2);
+    expect(run.restrict).toBe('INS');
+    expect(() => startRun(starter('ghost_bat'), 'ghost_bat', ['egyptian_fruit'], 9, 1)).not.toThrow();
     const rng = new Rng(4);
     for (let i = 0; i < 30; i++) for (const o of draftOffers(run, rng, 3)) if (o.kind === 'bat') expect(BAT_BY_ID[o.id].clans).toContain('INS');
-    run.status = 'won';
-    run.tally.maxLevel = 6; // 'tall' goal on node 5
-    const res = finishRun(p, run);
-    expect(res.stars).toBe(3); // cleared + noLeak (no leaks tallied) + tall
-    expect(p.saga.unlocked).toBe(6);
   });
 
   it('takes, sells and breaks charms; shattered glass leaves the deck', () => {

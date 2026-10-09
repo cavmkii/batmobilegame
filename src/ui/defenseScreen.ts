@@ -365,12 +365,13 @@ registerScreen('battle', (app) => {
       d.slots.map((s) => (s.roost ? `${s.roost.batId}${s.roost.level}` : 0)).join('.')].join('|');
     if (k === key) return;
     key = k;
-    guano.replaceChildren(h('span.g-icon', '◆'), h('b', String(d.guano)),
-      h('span.small.muted', isDay ? ` guano · +${d.projectedIncome() + d.interestNow()} at dawn` : ' guano'),
-      isDay && d.interestNow() ? h('span.small.interest', ` (${d.interestNow()} interest)`) : '');
+    guano.replaceChildren(
+      h('div.g-main', h('span.g-icon', '◆'), h('b', String(d.guano)), h('span.small.muted', ' guano')),
+      isDay ? h('div.g-sub', `+${d.projectedIncome() + d.interestNow()} at dawn`, d.interestNow() ? h('span.interest', ` · ${d.interestNow()} interest`) : '') : '');
     guano.title = `Dawn income: +2, plus 1 per 2 bats housed in standing roosts, plus Clusters, plus interest: +1 per ${BALANCE.interest.per} unspent (max ${d.interestCap})`;
     renderClans(isDay);
-    piles.textContent = `deck ${d.drawPile.length} · discard ${d.discard.length}`;
+    piles.textContent = `🂠 ${d.drawPile.length} · ♻ ${d.discard.length}`;
+    piles.title = 'Draw pile · discard pile';
     refreshBtn.textContent = `↻ ${d.refreshCost}`;
     refreshBtn.disabled = !d.canRefresh();
     refreshBtn.title = 'Discard the pool and draw new cards';
@@ -542,7 +543,7 @@ registerScreen('battle', (app) => {
     const won = d.phase === 'won';
     if (tut >= 0) finishTutorial();
     applyLevelResult(r, { shattered: d.shattered, brokenCharms: d.brokenCharms, tally: d.tally });
-    resolveBattle(r, won, d.cave.hp);
+    resolveBattle(r, won, d.cave.hp, app.profile);
     app.save();
     overlay.classList.add('show');
     overlay.replaceChildren(h('div.result-box',
