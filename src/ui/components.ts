@@ -92,5 +92,5 @@ export function currencyBar(items: [string, string | number][]) {
 }
 
 export function header(title: string, onBack?: () => void, right?: Node) {
-  return h('header.bar', onBack ? h('button.ghost', { onclick: onBack }, '‹ Back') : h('span'), h('h1', title), right ?? h('span'));
+  return h('header.bar', onBack ? h('button.back', { onclick: onBack, 'aria-label': 'Back' }, h('span.chev', '‹'), 'Back') : h('span'), h('h1', title), right ?? h('span'));
 }

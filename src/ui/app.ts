@@ -60,9 +60,38 @@ export function createApp(root: HTMLElement): App {
       if (!r) throw new Error(`No screen ${app.screen.name}`);
       clear(root);
       root.append(r(app, app.screen as never));
+      const tab = TAB_OF[app.screen.name];
+      root.classList.toggle('with-tabs', !!tab);
+      if (tab) root.append(tabBar(app, tab));
     },
   };
   return app;
+}
+
+// ---------------- Bottom tab bar (outside a run) ----------------
+
+type Tab = 'play' | 'bats' | 'summon' | 'guides';
+const TAB_OF: Partial<Record<Screen['name'], Tab>> = {
+  home: 'play', saga: 'play', prep: 'play', roster: 'bats', bat: 'bats', summon: 'summon', guides: 'guides', bestiary: 'guides',
+};
+const TABS: { id: Tab; icon: string; label: string; go: Screen }[] = [
+  { id: 'play', icon: '🌙', label: 'Play', go: { name: 'home' } },
+  { id: 'bats', icon: '🦇', label: 'Bats', go: { name: 'roster' } },
+  { id: 'summon', icon: '✨', label: 'Summon', go: { name: 'summon' } },
+  { id: 'guides', icon: '📖', label: 'Guides', go: { name: 'guides' } },
+];
+
+function tabBar(app: App, active: Tab): HTMLElement {
+  const nav = document.createElement('nav');
+  nav.className = 'tabbar';
+  for (const t of TABS) {
+    const b = document.createElement('button');
+    b.className = `tab${t.id === active ? ' on' : ''}`;
+    b.innerHTML = `<span class="tab-icon">${t.icon}</span><span class="tab-label">${t.label}</span>`;
+    b.onclick = () => app.go(t.go);
+    nav.append(b);
+  }
+  return nav;
 }
 
 function initialScreen(p: Profile): Screen {

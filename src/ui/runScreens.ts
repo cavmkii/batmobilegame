@@ -131,6 +131,9 @@ registerScreen('map', (app) => {
     }, NODE_ICON[n.type]);
   });
   const mat = MATRIARCH_BY_ID[r.matriarchId];
+  const mapEl = h('div.map', { style: `height:${H}px` }, svg, ...nodes);
+  // The playable row is low on a tall map: bring it into view.
+  setTimeout(() => mapEl.querySelector('.map-node.available')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60);
   return h('div.screen',
     header(`${BIOME_BY_ID[r.biome ?? '']?.icon ?? ''} ${BIOME_BY_ID[r.biome ?? '']?.name ?? 'Night Flight'}`, () => app.go({ name: 'home' }), h('button.ghost', { onclick: () => app.go({ name: 'deck' }) }, `Deck ${r.deck.length}`)),
     runHud(app),
@@ -143,7 +146,7 @@ registerScreen('map', (app) => {
       ...r.charmOffer.map((id) => charmCard(id, h('button.primary', { onclick: () => { takeCharm(r, id); r.charmOffer = null; app.save(); app.refresh(); } }, 'Take'))),
     ) : null,
     h('button.map-cmd', { onclick: () => toast(`${BAT_BY_ID[r.matriarchId].name}, ${mat.title}: ${mat.rule}`) }, batImg(r.matriarchId, 1), h('span.small', `♛ ${mat.title}`), h('span.small.muted', mat.rule)),
-    h('div.map', { style: `height:${H}px` }, svg, ...nodes),
+    mapEl,
     h('div.legend.small.muted', ...Object.entries(NODE_ICON).map(([k, v]) => h('span', `${v} ${k}`))),
     h('button.ghost.small', {
       onclick: () => {

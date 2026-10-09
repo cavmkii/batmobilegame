@@ -12,6 +12,34 @@ the source of round-to-round variety. The meta loop (roster, gacha, run map) is 
 Numbers below are starting values. All of them live in `src/data/` and
 `src/data/balance.ts` so they can be tuned without touching logic.
 
+## 0000. v0.9: endless runs through the saga, bigger decks, app UI
+
+**Run structure (Balatro antes).** A run is the saga. It starts at a chapter and climbs chapter after
+chapter until the cave falls, which it always eventually does: chapter difficulty compounds ×1.6.
+- A **chapter** is an 11-row branching map: 10 rows of levels, shops, events, rests and treasure,
+  every branch funnelling into one **boss** (the "boss blind"). Encounter types still ramp through
+  the 8-step scale inside a chapter; the chapter multiplier stacks on top.
+- The **deck, charms, star charts, figs and cave HP carry across chapters**. Each chapter brings its
+  own biome, modifiers, objective and boss rule; a clan restriction now limits that chapter's drafts.
+- **Boss cleared:** stars for the chapter's goals, +50 figs, 25% heal, a pick of 3 charms and a
+  rare-card draft, and the next chapter becomes a **checkpoint**.
+- **Checkpoints:** a new run can start at any chapter reached, with a fresh deck plus supplies
+  (60 figs per chapter skipped and a free charm). Run sim: starting at chapter 3 with a level-10
+  collection hits the same wall (chapter 4) in half the levels, so checkpoints save time without
+  replacing the deckbuilding that gets you further.
+- **On loss:** XP and Glowbugs earned are banked, +25% per chapter cleared this run. Then level bats,
+  skills and the matriarch tree, and go again.
+- The free-form custom run (8-row act with picked modifiers) is gone; chapters carry those twists.
+- Run sim (bot, drafting, resting, taking charms): roster L1 falls in chapter 1–2 (4–13 levels);
+  L5 in chapter 2–3; L10 with a built tree in chapter 4–5 (~25 levels).
+
+**Bigger decks.** Start with 16 (4 species × 3 + 4 Fledglings), cap 40, and the pool shows 3.
+
+**App UI.** Rounded system type, a bottom tab bar (Play, Bats, Summon, Guides), a hub home screen
+(matriarch art, current chapter, big Play button, quick tiles), blurred navigation bars,
+bottom-sheet dialogs, and a battle screen that always fits one phone screen (the field shrinks so
+the cards stay visible).
+
 ## 000. v0.8: matriarch trees, armour, the raccoon
 
 - **Matriarch passive tree** (Path of Exile, much smaller). One point per matriarch level above 1

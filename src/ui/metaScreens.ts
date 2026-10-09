@@ -60,32 +60,45 @@ registerScreen('home', (app) => {
   const p = app.profile;
   const owned = Object.keys(p.roster).length - 1;
   const total = BATS.filter((b) => !b.basic).length;
-  return h('div.screen',
-    h('div.hero', h('h1.title', 'BATMOBILE'), wallet(app)),
-    h('div.menu',
-      h('button.big.primary.main-btn', { onclick: () => app.go({ name: p.run ? 'map' : 'saga' }) },
-        h('span.mb-icon', '▶'), h('span', p.run ? 'Continue run' : 'Play'),
-        h('span.mb-sub', p.run ? `Chapter ${p.run.chapter}: ${sagaNode(p.run.chapter).name}` : `Checkpoint: chapter ${p.saga.unlocked} · ★${totalStars(p.saga.stars)}`)),
-      h('button.big.main-btn', { onclick: () => app.go({ name: 'guides' }) },
-        h('span.mb-icon', '📖'), h('span', 'Field Guides'), h('span.mb-sub', `Bats ${owned}/${total}`),
-        claimable(p).length ? h('span.badge', claimable(p).length) : null),
-      h('button.big.main-btn', { onclick: () => app.go({ name: 'summon' }) },
-        h('span.mb-icon', '🦇'), h('span', 'Summon'), h('span.mb-sub', `🪲 ${fmt(p.glow)}`),
-        p.pendingDupes.length ? h('span.badge', p.pendingDupes.length) : null),
+  const mat = p.run?.matriarchId ?? (p.lastMatriarch && p.roster[p.lastMatriarch] ? p.lastMatriarch : Object.keys(p.roster).find((id) => BAT_BY_ID[id]?.matriarch));
+  const chapter = p.run ? p.run.chapter : p.saga.unlocked;
+  const node = sagaNode(chapter);
+  const ups = Object.entries(p.roster).filter(([id, o]) => canLevelUp(BAT_BY_ID[id], o, p.xp) || skillsReady(id, o)).length;
+  const tile = (icon: string, title: string, sub: string, go: () => void, badge = 0) =>
+    h('button.tile', { onclick: go }, h('span.tile-icon', icon), h('span.tile-title', title), h('span.tile-sub', sub), badge ? h('span.badge', badge) : null);
+  return h('div.screen.home',
+    h('div.home-top', h('div.app-title', 'Batmobile'), wallet(app)),
+    h('div.hero-card',
+      h('div.hero-glow'),
+      mat ? h('div.hero-art', batImg(mat, 4)) : null,
+      h('div.hero-kicker', p.run ? 'Run in progress' : chapter > 1 ? `Checkpoint · chapter ${chapter}` : 'The saga begins'),
+      h('div.hero-name', p.run ? `Chapter ${chapter}: ${node.name}` : node.name),
+      h('div.hero-sub', p.run ? `${p.run.deck.length} cards · ${p.run.charms.length} charms · cave ${Math.round((p.run.caveHp / p.run.caveMax) * 100)}%` : node.blurb),
+      h('button.cta', { onclick: () => app.go({ name: p.run ? 'map' : 'saga' }) }, p.run ? 'Continue run' : 'Play'),
+      h('div.hero-stats',
+        h('span', h('b', `★ ${totalStars(p.saga.stars)}`), ' stars'),
+        h('span', h('b', String(p.stats.clears)), ' bosses'),
+        h('span', h('b', String(p.stats.bestRow)), ' deepest'),
+      ),
     ),
-    h('div.stats.muted', `Runs ${p.stats.runs} · Bosses beaten ${p.stats.clears} · Deepest level ${p.stats.bestRow} · Pulls ${p.stats.pulls}`),
-    h('div.center',
-      p.tutorialDone ? h('button.ghost.small', { onclick: () => { p.tutorialDone = false; app.save(); toast('The tutorial will play in your next level.'); } }, 'Replay tutorial') : null,
-      h('button.ghost.small', { onclick: () => backupDialog(app) }, 'Back up / restore save'),
+    h('div.tiles',
+      tile('⬆', 'Upgrades', ups ? `${ups} ready` : 'Level bats with XP', () => app.go({ name: 'roster' }), ups),
+      tile('📖', 'Field guide', `${owned}/${total} species`, () => app.go({ name: 'guides' }), claimable(p).length),
+      tile('✨', 'Summon', `🪲 ${fmt(p.glow)}`, () => app.go({ name: 'summon' }), p.pendingDupes.length),
+      tile('🗺', 'Saga', `${p.saga.unlocked - 1} chapter${p.saga.unlocked === 2 ? '' : 's'} cleared`, () => app.go({ name: 'saga' })),
     ),
-    h('button.ghost.small', {
-      onclick: () => {
-        if (confirm('Erase all progress?')) {
-          app.profile = resetProfile();
-          app.go({ name: 'starter' });
-        }
-      },
-    }, 'Reset save'),
+    h('div.home-links',
+      p.tutorialDone ? h('button.link', { onclick: () => { p.tutorialDone = false; app.save(); toast('The tutorial will play in your next level.'); } }, 'Replay tutorial') : null,
+      h('button.link', { onclick: () => backupDialog(app) }, 'Back up / restore'),
+      h('button.link', {
+        onclick: () => {
+          if (confirm('Erase all progress?')) {
+            app.profile = resetProfile();
+            app.go({ name: 'starter' });
+          }
+        },
+      }, 'Reset save'),
+    ),
   );
 });
 
